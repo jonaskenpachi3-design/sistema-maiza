@@ -192,6 +192,13 @@ export async function listarEnvios(alunoId) {
   return supabase.from('envios').select('*').eq('aluno_id', alunoId).order('criado_em', { ascending: false });
 }
 
+export async function listarTodosEnvios() {
+  return supabase
+      .from('envios')
+      .select('id, aluno_id, devolucao_texto, criado_em')
+      .order('criado_em', { ascending: false });
+}
+
 export async function responderEnvio(envioId, textoDevolucao) {
   return supabase
       .from('envios')

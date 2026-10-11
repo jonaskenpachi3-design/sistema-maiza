@@ -1,17 +1,46 @@
 import {
-  listarAlunos, criarAluno, atualizarAluno, removerAluno,
-  listarTreinos, adicionarTreino, removerTreino,
-  listarDietas, adicionarDieta, removerDieta,
-  listarAvaliacoes, adicionarAvaliacao, removerAvaliacao,
-  listarNotas, adicionarNota, removerNota,
-  listarEnvios, responderEnvio,
+  listarAlunos,
+  criarAluno,
+  atualizarAluno,
+  removerAluno,
+  listarTreinos,
+  adicionarTreino,
+  removerTreino,
+  listarDietas,
+  adicionarDieta,
+  removerDieta,
+  listarAvaliacoes,
+  adicionarAvaliacao,
+  removerAvaliacao,
+  listarNotas,
+  adicionarNota,
+  removerNota,
+  listarEnvios,
+  listarTodosEnvios,
+  responderEnvio,
   vincularAlunoPorEmail,
-  listarBiblioteca, criarExercicioBiblioteca, removerExercicioBiblioteca,
-  listarPlanos, criarPlano, removerPlano,
+  listarBiblioteca,
+  criarExercicioBiblioteca,
+  removerExercicioBiblioteca,
+  listarPlanos,
+  criarPlano,
+  removerPlano,
 } from './supabase-client.js';
 
 let containerGlobal = null;
 let todosAlunosCache = [];
+
+const icones = {
+  alunos: 'fa-user-group',
+  treino: 'fa-dumbbell',
+  dieta: 'fa-bowl-food',
+  avaliacao: 'fa-weight-scale',
+  anamnese: 'fa-file-lines',
+  notas: 'fa-comment-medical',
+  envios: 'fa-camera',
+  biblioteca: 'fa-book-open',
+  planos: 'fa-tags',
+};
 
 export async function montarPainelAdmin(container) {
   containerGlobal = container;
@@ -24,627 +53,1634 @@ export async function irParaSecao(secao) {
   if (secao === 'planos') return renderPlanos();
 }
 
-// ==============================================================
-// ALUNOS — lista
-// ==============================================================
+// ============================================================
+// UTILITÁRIOS
+// ============================================================
+
+function escapar(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, caractere => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[caractere]);
+}
+
+function formatarData(data) {
+  if (!data) return 'Não informada';
+
+  const dataObj = new Date(`${String(data).slice(0, 10)}T12:00:00`);
+
+  if (Number.isNaN(dataObj.getTime())) return 'Data inválida';
+
+  return dataObj.toLocaleDateString('pt-BR');
+}
+
+function mensagemVazia(icone, texto) {
+  return `
+    <div class="vazio-rico">
+      <i class="fa-solid ${icone}"></i>
+      <span>${escapar(texto)}</span>
+    </div>
+  `;
+}
+
+function mostrarErro(elemento, erro) {
+  if (!elemento) return;
+
+  elemento.innerHTML = `
+    <p class="erro">
+      ${escapar(erro?.message || 'Ocorreu um erro inesperado.')}
+    </p>
+  `;
+}
+
+function botaoRemover(id, texto = 'Remover') {
+  return `
+    <button
+      type="button"
+      class="btn-remover"
+      data-id="${escapar(id)}"
+      title="${escapar(texto)}"
+      aria-label="${escapar(texto)}"
+    >
+      <i class="fa-solid fa-trash"></i>
+    </button>
+  `;
+}
+
+function obterAluno(id) {
+  return todosAlunosCache.find(aluno => String(aluno.id) === String(id));
+}
+
+// ============================================================
+// ALUNOS — LISTA PRINCIPAL
+// ============================================================
+
 async function renderListaAlunos() {
   containerGlobal.innerHTML = `
-    <div class="secao">
-      <span class="eyebrow">Gestão de alunos</span>
-      <h2>Alunos</h2>
-      <div class="stats-row" id="stats-row"></div>
-      <div class="campo-busca">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="text" id="busca-aluno" placeholder="Buscar aluno pelo nome..." />
-      </div>
-      <div id="lista-alunos" class="lista-cards"><p>Carregando alunos...</p></div>
+    <div class="secao admin-painel">
+      <div class="admin-cabecalho">
+        <div>
+          <span class="eyebrow">SISTEMA DA MAIZA · GESTÃO</span>
+          <h2>Seus alunos</h2>
+          <p class="admin-subtitulo">
+            Acompanhe seus alunos e organize sua consultoria.
+          </p>
+        </div>
 
-      <form id="form-novo-aluno" class="caixa-form">
-        <h3>Novo aluno</h3>
-        <label>Nome</label>
-        <input type="text" id="novo-nome" required />
-        <label>Idade</label>
-        <input type="number" id="novo-idade" />
-        <label>Objetivo</label>
-        <input type="text" id="novo-objetivo" placeholder="Ex: hipertrofia, emagrecimento" />
-        <label>Contato</label>
-        <input type="text" id="novo-contato" placeholder="WhatsApp ou e-mail" />
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar aluno</button>
-        <div id="erro-novo-aluno" class="erro"></div>
+        <button type="button" class="admin-btn-principal" id="btn-ir-novo-aluno">
+          <i class="fa-solid fa-plus"></i>
+          Novo aluno
+        </button>
+      </div>
+
+      <div class="stats-row" id="stats-row">
+        <div class="stat-box">Carregando indicadores...</div>
+      </div>
+
+      <div class="admin-bloco-lista">
+        <div class="admin-lista-cabecalho">
+          <div>
+            <h3>Lista de alunos</h3>
+            <p>Pesquise e selecione um aluno para ver os detalhes.</p>
+          </div>
+        </div>
+
+        <div class="campo-busca">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input
+            type="search"
+            id="busca-aluno"
+            placeholder="Buscar aluno pelo nome..."
+            autocomplete="off"
+          />
+        </div>
+
+        <div id="lista-alunos" class="lista-cards">
+          <p>Carregando alunos...</p>
+        </div>
+      </div>
+
+      <form id="form-novo-aluno" class="caixa-form admin-form">
+        <div class="admin-form-titulo">
+          <span class="admin-icone-titulo">
+            <i class="fa-solid fa-user-plus"></i>
+          </span>
+          <div>
+            <h3>Novo aluno</h3>
+            <p>Cadastre os dados iniciais do aluno.</p>
+          </div>
+        </div>
+
+        <div class="admin-grid-form">
+          <div>
+            <label for="novo-nome">Nome completo</label>
+            <input type="text" id="novo-nome" required />
+          </div>
+
+          <div>
+            <label for="novo-idade">Idade</label>
+            <input type="number" id="novo-idade" min="1" max="120" />
+          </div>
+
+          <div>
+            <label for="novo-objetivo">Objetivo</label>
+            <input
+              type="text"
+              id="novo-objetivo"
+              placeholder="Ex.: hipertrofia"
+            />
+          </div>
+
+          <div>
+            <label for="novo-contato">Contato</label>
+            <input
+              type="text"
+              id="novo-contato"
+              placeholder="WhatsApp ou e-mail"
+            />
+          </div>
+        </div>
+
+        <button type="submit" class="admin-btn-principal">
+          <i class="fa-solid fa-plus"></i>
+          Cadastrar aluno
+        </button>
+
+        <div id="erro-novo-aluno" class="erro" role="alert"></div>
       </form>
     </div>
   `;
 
-  document.getElementById('form-novo-aluno').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const erroEl = document.getElementById('erro-novo-aluno');
-    erroEl.textContent = '';
-    const { error } = await criarAluno({
-      nome: document.getElementById('novo-nome').value.trim(),
-      idade: document.getElementById('novo-idade').value || null,
-      objetivo: document.getElementById('novo-objetivo').value.trim(),
-      contato: document.getElementById('novo-contato').value.trim(),
-    });
-    if (error) { erroEl.textContent = 'Não foi possível salvar: ' + error.message; return; }
-    e.target.reset();
-    await carregarListaAlunos();
-  });
+  document.getElementById('btn-ir-novo-aluno')
+      .addEventListener('click', () => {
+        document.getElementById('form-novo-aluno')
+            .scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  document.getElementById('busca-aluno').addEventListener('input', (e) => {
-    desenharListaAlunos(filtrarAlunos(e.target.value));
-  });
+        document.getElementById('novo-nome').focus();
+      });
+
+  document.getElementById('form-novo-aluno')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const erroEl = document.getElementById('erro-novo-aluno');
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        erroEl.textContent = '';
+        botao.disabled = true;
+        botao.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+
+        try {
+          const { error } = await criarAluno({
+            nome: document.getElementById('novo-nome').value.trim(),
+            idade: document.getElementById('novo-idade').value || null,
+            objetivo: document.getElementById('novo-objetivo').value.trim(),
+            contato: document.getElementById('novo-contato').value.trim(),
+          });
+
+          if (error) {
+            erroEl.textContent = `Não foi possível cadastrar: ${error.message}`;
+            return;
+          }
+
+          formulario.reset();
+          await carregarListaAlunos();
+
+          alert('Aluno cadastrado com sucesso!');
+        } catch (erro) {
+          erroEl.textContent = erro.message || 'Erro ao cadastrar aluno.';
+        } finally {
+          botao.disabled = false;
+          botao.innerHTML = '<i class="fa-solid fa-plus"></i> Cadastrar aluno';
+        }
+      });
+
+  document.getElementById('busca-aluno')
+      .addEventListener('input', evento => {
+        desenharListaAlunos(filtrarAlunos(evento.target.value));
+      });
 
   await carregarListaAlunos();
 }
 
 function filtrarAlunos(termo) {
-  const t = (termo || '').toLowerCase().trim();
-  if (!t) return todosAlunosCache;
-  return todosAlunosCache.filter(a => (a.nome || '').toLowerCase().includes(t));
+  const busca = (termo || '').toLocaleLowerCase('pt-BR').trim();
+
+  if (!busca) return todosAlunosCache;
+
+  return todosAlunosCache.filter(aluno =>
+      (aluno.nome || '').toLocaleLowerCase('pt-BR').includes(busca)
+  );
 }
 
 async function carregarListaAlunos() {
   const listaEl = document.getElementById('lista-alunos');
-  const { data: alunos, error } = await listarAlunos();
-  if (error) { listaEl.innerHTML = `<p class="erro">Erro ao carregar alunos: ${error.message}</p>`; return; }
-  todosAlunosCache = alunos;
+  const statsEl = document.getElementById('stats-row');
 
-  const hoje = new Date().toISOString().slice(0, 10);
-  const revisoesPendentes = alunos.filter(a => a.proxima_revisao && a.proxima_revisao <= hoje).length;
-  const treinaramEstaSemanaOuMais = alunos.filter(a => a.ultimo_treino_em).length;
-  document.getElementById('stats-row').innerHTML = `
-    <div class="stat-box"><div class="ic-stat"><i class="fa-solid fa-user-group"></i></div><div><span class="num">${alunos.length}</span><span class="lbl">Alunos</span></div></div>
-    <div class="stat-box"><div class="ic-stat"><i class="fa-solid fa-check"></i></div><div><span class="num">${treinaramEstaSemanaOuMais}</span><span class="lbl">Já treinaram</span></div></div>
-    <div class="stat-box"><div class="ic-stat"><i class="fa-solid fa-calendar"></i></div><div><span class="num">${revisoesPendentes}</span><span class="lbl">Revisões</span></div></div>
-  `;
+  if (!listaEl || !statsEl) return;
 
-  desenharListaAlunos(alunos);
+  listaEl.innerHTML = '<p>Carregando alunos...</p>';
+
+  try {
+    const { data: alunos, error } = await listarAlunos();
+
+    if (error) {
+      mostrarErro(listaEl, error);
+      return;
+    }
+
+    todosAlunosCache = alunos || [];
+
+    const hoje = new Date().toISOString().slice(0, 10);
+
+    const revisoesPendentes = todosAlunosCache.filter(aluno =>
+        aluno.proxima_revisao &&
+        aluno.proxima_revisao <= hoje
+    ).length;
+
+    const alunosComTreino = todosAlunosCache.filter(aluno =>
+        aluno.ultimo_treino_em
+    ).length;
+
+    let enviosPendentes = 0;
+
+    try {
+      const resultadoEnvios = await listarTodosEnvios();
+
+      if (!resultadoEnvios.error) {
+        enviosPendentes = (resultadoEnvios.data || []).filter(envio =>
+            !envio.devolucao_texto ||
+            !envio.devolucao_texto.trim()
+        ).length;
+      } else {
+        console.error('Erro ao consultar envios:', resultadoEnvios.error);
+      }
+    } catch (erro) {
+      console.error('Não foi possível consultar os envios:', erro);
+    }
+
+    statsEl.innerHTML = `
+      <div class="stat-box">
+        <div class="ic-stat"><i class="fa-solid ${icones.alunos}"></i></div>
+        <div>
+          <span class="num">${todosAlunosCache.length}</span>
+          <span class="lbl">Alunos cadastrados</span>
+        </div>
+      </div>
+
+      <div class="stat-box">
+        <div class="ic-stat"><i class="fa-solid ${icones.treino}"></i></div>
+        <div>
+          <span class="num">${alunosComTreino}</span>
+          <span class="lbl">Com treino registrado</span>
+        </div>
+      </div>
+
+      <div class="stat-box">
+        <div class="ic-stat"><i class="fa-solid fa-calendar-check"></i></div>
+        <div>
+          <span class="num">${revisoesPendentes}</span>
+          <span class="lbl">Revisões pendentes</span>
+        </div>
+      </div>
+
+      <div class="stat-box">
+        <div class="ic-stat"><i class="fa-solid ${icones.envios}"></i></div>
+        <div>
+          <span class="num">${enviosPendentes}</span>
+          <span class="lbl">Envios sem devolutiva</span>
+        </div>
+      </div>
+    `;
+
+    desenharListaAlunos(todosAlunosCache);
+  } catch (erro) {
+    mostrarErro(listaEl, erro);
+  }
 }
 
 function desenharListaAlunos(alunos) {
   const listaEl = document.getElementById('lista-alunos');
-  if (!alunos.length) {
-    listaEl.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-user-group"></i>Nenhum aluno encontrado.</div>';
+
+  if (!alunos || !alunos.length) {
+    listaEl.innerHTML = `
+      <div class="vazio-rico">
+        <i class="fa-solid fa-user-group"></i>
+        Nenhum aluno encontrado.
+      </div>
+    `;
     return;
   }
 
   listaEl.innerHTML = alunos.map(a => `
-    <div class="card-aluno" data-id="${a.id}">
-      <div class="avatar-letra">${(a.nome || '?').charAt(0).toUpperCase()}</div>
-      <div class="info-aluno">
-        <strong>${escapar(a.nome)}</strong>
-        <span>${a.idade ? a.idade + ' anos · ' : ''}${escapar(a.objetivo || 'sem objetivo definido')}</span>
-        ${a.contato ? `<span class="contato">${escapar(a.contato)}</span>` : ''}
-        ${a.proxima_revisao ? `<span class="tag">revisão: ${new Date(a.proxima_revisao).toLocaleDateString('pt-BR')}</span>` : ''}
-        ${a.ultimo_treino_em ? `<span class="tag" style="background:rgba(34,197,94,.12);color:#16A34A"><i class="fa-solid fa-check"></i> treinou em ${new Date(a.ultimo_treino_em).toLocaleDateString('pt-BR')}</span>` : ''}
+    <div class="card-aluno card-aluno-organizado" data-id="${a.id}">
+
+      <div class="aluno-avatar">
+        ${(a.nome || '?').charAt(0).toUpperCase()}
       </div>
-      <button class="btn-remover" data-id="${a.id}" title="Remover aluno"><i class="fa-solid fa-xmark"></i></button>
+
+      <div class="aluno-conteudo">
+        <div class="aluno-cabecalho">
+          <div class="aluno-identificacao">
+            <strong>${escapar(a.nome || 'Aluno sem nome')}</strong>
+
+            <span class="aluno-detalhes">
+              ${a.idade ? escapar(a.idade) + ' anos' : ''}
+              ${a.idade && a.objetivo ? ' · ' : ''}
+              ${escapar(a.objetivo || 'Objetivo não definido')}
+            </span>
+          </div>
+
+          <div class="aluno-acoes">
+            <button
+              type="button"
+              class="btn-abrir-aluno"
+              data-id="${a.id}"
+            >
+              Abrir <i class="fa-solid fa-arrow-right"></i>
+            </button>
+
+            <button
+              type="button"
+              class="btn-remover"
+              data-id="${a.id}"
+              title="Remover aluno"
+              aria-label="Remover aluno"
+            >
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+
+        ${a.contato ? `
+          <div class="aluno-contato">
+            <i class="fa-regular fa-id-card"></i>
+            <span>${escapar(a.contato)}</span>
+          </div>
+        ` : ''}
+
+        <div class="aluno-etiquetas">
+          ${a.proxima_revisao ? `
+            <span class="aluno-tag">
+              <i class="fa-regular fa-calendar"></i>
+              Revisão: ${new Date(a.proxima_revisao + 'T12:00:00').toLocaleDateString('pt-BR')}
+            </span>
+          ` : ''}
+
+          ${a.ultimo_treino_em ? `
+            <span class="aluno-tag aluno-tag-treino">
+              <i class="fa-solid fa-check"></i>
+              Treino: ${new Date(a.ultimo_treino_em).toLocaleDateString('pt-BR')}
+            </span>
+          ` : ''}
+        </div>
+      </div>
     </div>
   `).join('');
 
-  listaEl.querySelectorAll('.card-aluno').forEach(card => {
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.btn-remover')) return;
-      const aluno = todosAlunosCache.find(a => a.id === card.dataset.id);
-      renderDetalheAluno(aluno);
+  listaEl.querySelectorAll('.btn-abrir-aluno').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+
+      const aluno = todosAlunosCache.find(
+          a => String(a.id) === String(btn.dataset.id)
+      );
+
+      if (aluno) renderDetalheAluno(aluno);
     });
   });
+
+  listaEl.querySelectorAll('.card-aluno-organizado').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-remover')) return;
+      if (e.target.closest('.btn-abrir-aluno')) return;
+
+      const aluno = todosAlunosCache.find(
+          a => String(a.id) === String(card.dataset.id)
+      );
+
+      if (aluno) renderDetalheAluno(aluno);
+    });
+  });
+
   listaEl.querySelectorAll('.btn-remover').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('Remover este aluno e todos os dados dele? Essa ação não pode ser desfeita.')) return;
+
+      if (!confirm('Remover este aluno e todos os dados dele? Essa ação não pode ser desfeita.')) {
+        return;
+      }
+
       const { error } = await removerAluno(btn.dataset.id);
-      if (error) { alert('Não foi possível remover: ' + error.message); return; }
+
+      if (error) {
+        alert('Não foi possível remover: ' + error.message);
+        return;
+      }
+
       await carregarListaAlunos();
     });
   });
 }
 
-// ==============================================================
-// DETALHE DO ALUNO
-// ==============================================================
+// ============================================================
+// DETALHES DO ALUNO
+// ============================================================
+
 async function renderDetalheAluno(aluno) {
+  if (!aluno) return;
+
   containerGlobal.innerHTML = `
-    <button id="btn-voltar" class="link-botao" style="margin-bottom:14px"><i class="fa-solid fa-arrow-left"></i> Voltar pra lista de alunos</button>
-    <h2 style="font-family:'Playfair Display',serif;margin:0 0 20px">${escapar(aluno.nome)}</h2>
+    <div class="secao admin-painel">
+      <button id="btn-voltar" class="link-botao admin-voltar">
+        <i class="fa-solid fa-arrow-left"></i>
+        Voltar para os alunos
+      </button>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-id-card"></i> Dados do aluno</h3>
-      <form id="form-editar-aluno" class="caixa-form">
-        <label>Nome</label>
-        <input type="text" id="ed-nome" value="${escapar(aluno.nome)}" required />
-        <label>Idade</label>
-        <input type="number" id="ed-idade" value="${aluno.idade ?? ''}" />
-        <label>Objetivo</label>
-        <input type="text" id="ed-objetivo" value="${escapar(aluno.objetivo || '')}" />
-        <label>Contato</label>
-        <input type="text" id="ed-contato" value="${escapar(aluno.contato || '')}" />
-        <label>Próxima revisão</label>
-        <input type="date" id="ed-revisao" value="${aluno.proxima_revisao || ''}" />
-        <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Salvar alterações</button>
-        <div id="erro-editar" class="erro"></div>
-      </form>
-    </div>
+      <div class="admin-cabecalho admin-cabecalho-detalhe">
+        <div>
+          <span class="eyebrow">FICHA INDIVIDUAL</span>
+          <h2>${escapar(aluno.nome)}</h2>
+          <p class="admin-subtitulo">
+            Dados, acompanhamento e evolução do aluno.
+          </p>
+        </div>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-key"></i> Acesso do aluno</h3>
-      ${aluno.perfil_id ? `
-        <p class="vazio"><i class="fa-solid fa-circle-check" style="color:var(--accent)"></i> Login já vinculado.</p>
-      ` : `
-        <p class="vazio">Peça pro aluno criar a conta dele (tela de cadastro), depois cole o e-mail aqui:</p>
-        <form id="form-vincular" class="caixa-form">
-          <label>E-mail da conta do aluno</label>
-          <input type="email" id="vincular-email" required />
-          <button type="submit"><i class="fa-solid fa-link"></i> Vincular login</button>
-          <div id="erro-vincular" class="erro"></div>
+        <div class="avatar-letra admin-avatar-grande">
+          ${escapar((aluno.nome || '?').charAt(0).toUpperCase())}
+        </div>
+      </div>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-id-card"></i> Dados do aluno</summary>
+
+        <form id="form-editar-aluno" class="caixa-form admin-form">
+          <div class="admin-grid-form">
+            <div>
+              <label for="ed-nome">Nome</label>
+              <input type="text" id="ed-nome" value="${escapar(aluno.nome)}" required />
+            </div>
+
+            <div>
+              <label for="ed-idade">Idade</label>
+              <input type="number" id="ed-idade" min="1" max="120" value="${escapar(aluno.idade ?? '')}" />
+            </div>
+
+            <div>
+              <label for="ed-objetivo">Objetivo</label>
+              <input type="text" id="ed-objetivo" value="${escapar(aluno.objetivo || '')}" />
+            </div>
+
+            <div>
+              <label for="ed-contato">Contato</label>
+              <input type="text" id="ed-contato" value="${escapar(aluno.contato || '')}" />
+            </div>
+
+            <div>
+              <label for="ed-revisao">Próxima revisão</label>
+              <input type="date" id="ed-revisao" value="${escapar(aluno.proxima_revisao || '')}" />
+            </div>
+          </div>
+
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-floppy-disk"></i>
+            Salvar alterações
+          </button>
+
+          <div id="erro-editar" class="erro" role="alert"></div>
         </form>
-      `}
-    </div>
+      </details>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-file-lines"></i> Anamnese</h3>
-      <form id="form-anamnese" class="caixa-form">
-        <label>Restrições de saúde / lesões</label>
-        <textarea id="an-restricoes">${escapar(aluno.anamnese?.restricoes || '')}</textarea>
-        <label>Nível de atividade</label>
-        <select id="an-nivel">
-          <option value="sedentario" ${aluno.anamnese?.nivel === 'sedentario' ? 'selected' : ''}>Sedentário</option>
-          <option value="leve" ${aluno.anamnese?.nivel === 'leve' ? 'selected' : ''}>Leve</option>
-          <option value="moderado" ${aluno.anamnese?.nivel === 'moderado' ? 'selected' : ''}>Moderado</option>
-          <option value="intenso" ${aluno.anamnese?.nivel === 'intenso' ? 'selected' : ''}>Intenso</option>
-        </select>
-        <label>Disponibilidade semanal</label>
-        <input type="text" id="an-disponibilidade" value="${escapar(aluno.anamnese?.disponibilidade || '')}" placeholder="Ex: 3x por semana" />
-        <label>Observações gerais</label>
-        <textarea id="an-obs">${escapar(aluno.anamnese?.observacoes || '')}</textarea>
-        <button type="submit"><i class="fa-solid fa-floppy-disk"></i> Salvar anamnese</button>
-      </form>
-    </div>
+      <details class="secao admin-detalhe-secao">
+        <summary><i class="fa-solid fa-key"></i> Acesso do aluno</summary>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-dumbbell"></i> Treino</h3>
-      <div id="lista-treinos" class="lista-cards"><p>Carregando...</p></div>
-      <form id="form-treino" class="caixa-form">
-        <label>Exercício</label>
-        <input type="text" id="tr-exercicio" required />
-        <div style="display:flex;gap:10px">
-          <div style="flex:1"><label>Séries</label><input type="text" id="tr-series" placeholder="4" /></div>
-          <div style="flex:1"><label>Reps</label><input type="text" id="tr-reps" placeholder="12" /></div>
-          <div style="flex:1"><label>Carga</label><input type="text" id="tr-carga" placeholder="20kg" /></div>
+        ${aluno.perfil_id ? `
+          <p class="admin-mensagem-sucesso">
+            <i class="fa-solid fa-circle-check"></i>
+            Login vinculado.
+          </p>
+        ` : `
+          <p class="admin-subtitulo">
+            Depois que o aluno criar sua conta, informe o e-mail usado no cadastro.
+          </p>
+
+          <form id="form-vincular" class="caixa-form admin-form">
+            <label for="vincular-email">E-mail da conta</label>
+            <input type="email" id="vincular-email" required />
+
+            <button type="submit" class="admin-btn-principal">
+              <i class="fa-solid fa-link"></i>
+              Vincular login
+            </button>
+
+            <div id="erro-vincular" class="erro" role="alert"></div>
+          </form>
+        `}
+      </details>
+
+      <details class="secao admin-detalhe-secao">
+        <summary><i class="fa-solid fa-file-lines"></i> Anamnese</summary>
+
+        <form id="form-anamnese" class="caixa-form admin-form">
+          <label for="an-restricoes">Restrições de saúde / lesões</label>
+          <textarea id="an-restricoes">${escapar(aluno.anamnese?.restricoes || '')}</textarea>
+
+          <label for="an-nivel">Nível de atividade</label>
+          <select id="an-nivel">
+            <option value="sedentario" ${aluno.anamnese?.nivel === 'sedentario' ? 'selected' : ''}>Sedentário</option>
+            <option value="leve" ${aluno.anamnese?.nivel === 'leve' ? 'selected' : ''}>Leve</option>
+            <option value="moderado" ${aluno.anamnese?.nivel === 'moderado' ? 'selected' : ''}>Moderado</option>
+            <option value="intenso" ${aluno.anamnese?.nivel === 'intenso' ? 'selected' : ''}>Intenso</option>
+          </select>
+
+          <label for="an-disponibilidade">Disponibilidade semanal</label>
+          <input
+            type="text"
+            id="an-disponibilidade"
+            value="${escapar(aluno.anamnese?.disponibilidade || '')}"
+            placeholder="Ex.: 3 vezes por semana"
+          />
+
+          <label for="an-obs">Observações gerais</label>
+          <textarea id="an-obs">${escapar(aluno.anamnese?.observacoes || '')}</textarea>
+
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-floppy-disk"></i>
+            Salvar anamnese
+          </button>
+        </form>
+      </details>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-dumbbell"></i> Treino</summary>
+
+        <div id="lista-treinos" class="lista-cards">
+          <p>Carregando...</p>
         </div>
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar exercício</button>
-      </form>
-    </div>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-bowl-food"></i> Dieta</h3>
-      <div id="lista-dietas" class="lista-cards"><p>Carregando...</p></div>
-      <form id="form-dieta" class="caixa-form">
-        <div style="display:flex;gap:10px">
-          <div style="flex:1"><label>Horário</label><input type="text" id="di-horario" placeholder="08:00" /></div>
-          <div style="flex:2"><label>Refeição</label><input type="text" id="di-refeicao" required placeholder="Café da manhã" /></div>
+        <form id="form-treino" class="caixa-form admin-form">
+          <h3>Adicionar exercício</h3>
+
+          <label for="tr-exercicio">Exercício</label>
+          <input type="text" id="tr-exercicio" required />
+
+          <div class="admin-grid-form admin-grid-tres">
+            <div>
+              <label for="tr-series">Séries</label>
+              <input type="text" id="tr-series" placeholder="4" />
+            </div>
+
+            <div>
+              <label for="tr-reps">Repetições</label>
+              <input type="text" id="tr-reps" placeholder="12" />
+            </div>
+
+            <div>
+              <label for="tr-carga">Carga</label>
+              <input type="text" id="tr-carga" placeholder="20 kg" />
+            </div>
+          </div>
+
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-plus"></i>
+            Adicionar exercício
+          </button>
+        </form>
+      </details>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-bowl-food"></i> Dieta</summary>
+
+        <div id="lista-dietas" class="lista-cards">
+          <p>Carregando...</p>
         </div>
-        <label>Alimentos</label>
-        <input type="text" id="di-alimentos" placeholder="3 ovos, aveia, banana" />
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar refeição</button>
-      </form>
-    </div>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-weight-scale"></i> Avaliação física</h3>
-      <div id="lista-avaliacoes" class="lista-cards"><p>Carregando...</p></div>
-      <form id="form-avaliacao" class="caixa-form">
-        <div style="display:flex;gap:10px">
-          <div style="flex:1"><label>Peso (kg)</label><input type="number" step="0.1" id="av-peso" required /></div>
-          <div style="flex:1"><label>Altura (cm)</label><input type="number" step="0.1" id="av-altura" required /></div>
+        <form id="form-dieta" class="caixa-form admin-form">
+          <h3>Adicionar refeição</h3>
+
+          <div class="admin-grid-form">
+            <div>
+              <label for="di-horario">Horário</label>
+              <input type="text" id="di-horario" placeholder="08:00" />
+            </div>
+
+            <div>
+              <label for="di-refeicao">Refeição</label>
+              <input type="text" id="di-refeicao" required placeholder="Café da manhã" />
+            </div>
+          </div>
+
+          <label for="di-alimentos">Alimentos</label>
+          <input type="text" id="di-alimentos" placeholder="Ovos, aveia, banana..." />
+
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-plus"></i>
+            Adicionar refeição
+          </button>
+        </form>
+      </details>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-weight-scale"></i> Avaliação física</summary>
+
+        <div id="lista-avaliacoes" class="lista-cards">
+          <p>Carregando...</p>
         </div>
-        <div style="display:flex;gap:10px">
-          <div style="flex:1"><label>Cintura (cm)</label><input type="number" step="0.1" id="av-cintura" /></div>
-          <div style="flex:1"><label>Quadril (cm)</label><input type="number" step="0.1" id="av-quadril" /></div>
-          <div style="flex:1"><label>Braço (cm)</label><input type="number" step="0.1" id="av-braco" /></div>
+
+        <form id="form-avaliacao" class="caixa-form admin-form">
+          <h3>Registrar avaliação</h3>
+
+          <div class="admin-grid-form">
+            <div>
+              <label for="av-peso">Peso (kg)</label>
+              <input type="number" step="0.1" min="1" id="av-peso" required />
+            </div>
+
+            <div>
+              <label for="av-altura">Altura (cm)</label>
+              <input type="number" step="0.1" min="1" id="av-altura" required />
+            </div>
+
+            <div>
+              <label for="av-cintura">Cintura (cm)</label>
+              <input type="number" step="0.1" id="av-cintura" />
+            </div>
+
+            <div>
+              <label for="av-quadril">Quadril (cm)</label>
+              <input type="number" step="0.1" id="av-quadril" />
+            </div>
+
+            <div>
+              <label for="av-braco">Braço (cm)</label>
+              <input type="number" step="0.1" id="av-braco" />
+            </div>
+
+            <div>
+              <label for="av-coxa">Coxa (cm)</label>
+              <input type="number" step="0.1" id="av-coxa" />
+            </div>
+          </div>
+
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-plus"></i>
+            Registrar avaliação
+          </button>
+        </form>
+      </details>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-comment-medical"></i> Notas de consultoria</summary>
+
+        <div id="lista-notas" class="lista-cards">
+          <p>Carregando...</p>
         </div>
-        <label>Coxa (cm)</label>
-        <input type="number" step="0.1" id="av-coxa" />
-        <button type="submit"><i class="fa-solid fa-plus"></i> Registrar avaliação</button>
-      </form>
-    </div>
 
-    <div class="secao" style="margin-bottom:28px">
-      <h3><i class="fa-solid fa-comment-medical"></i> Notas de consultoria</h3>
-      <div id="lista-notas" class="lista-cards"><p>Carregando...</p></div>
-      <form id="form-nota" class="caixa-form">
-        <label>Observação / evolução</label>
-        <textarea id="nota-texto" required placeholder="Ex: evoluindo bem, aumentar carga do supino"></textarea>
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar nota</button>
-      </form>
-    </div>
+        <form id="form-nota" class="caixa-form admin-form">
+          <label for="nota-texto">Observação / evolução</label>
+          <textarea id="nota-texto" required placeholder="Registre a evolução do aluno..."></textarea>
 
-    <div class="secao">
-      <h3><i class="fa-solid fa-camera"></i> Fotos e vídeos enviados</h3>
-      <div id="lista-envios" class="lista-cards"><p>Carregando...</p></div>
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-plus"></i>
+            Adicionar nota
+          </button>
+        </form>
+      </details>
+
+      <details class="secao admin-detalhe-secao" open>
+        <summary><i class="fa-solid fa-camera"></i> Fotos e vídeos enviados</summary>
+
+        <div id="lista-envios" class="lista-cards">
+          <p>Carregando...</p>
+        </div>
+      </details>
     </div>
   `;
 
-  document.getElementById('btn-voltar').addEventListener('click', renderListaAlunos);
+  document.getElementById('btn-voltar')
+      .addEventListener('click', renderListaAlunos);
 
-  document.getElementById('form-editar-aluno').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const erroEl = document.getElementById('erro-editar');
-    erroEl.textContent = '';
-    const { error } = await atualizarAluno(aluno.id, {
-      nome: document.getElementById('ed-nome').value.trim(),
-      idade: document.getElementById('ed-idade').value || null,
-      objetivo: document.getElementById('ed-objetivo').value.trim(),
-      contato: document.getElementById('ed-contato').value.trim(),
-      proxima_revisao: document.getElementById('ed-revisao').value || null,
-    });
-    if (error) { erroEl.textContent = 'Não foi possível salvar: ' + error.message; return; }
-    Object.assign(aluno, {
-      nome: document.getElementById('ed-nome').value.trim(),
-      proxima_revisao: document.getElementById('ed-revisao').value || null,
-    });
-    document.querySelector('h2').textContent = aluno.nome;
-    alert('Dados atualizados!');
-  });
+  document.getElementById('form-editar-aluno')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const erroEl = document.getElementById('erro-editar');
+        const botao = evento.currentTarget.querySelector('button[type="submit"]');
+
+        erroEl.textContent = '';
+        botao.disabled = true;
+
+        const dados = {
+          nome: document.getElementById('ed-nome').value.trim(),
+          idade: document.getElementById('ed-idade').value || null,
+          objetivo: document.getElementById('ed-objetivo').value.trim(),
+          contato: document.getElementById('ed-contato').value.trim(),
+          proxima_revisao: document.getElementById('ed-revisao').value || null,
+        };
+
+        try {
+          const { error } = await atualizarAluno(aluno.id, dados);
+
+          if (error) {
+            erroEl.textContent = `Não foi possível salvar: ${error.message}`;
+            return;
+          }
+
+          Object.assign(aluno, dados);
+
+          const indice = todosAlunosCache.findIndex(item =>
+              String(item.id) === String(aluno.id)
+          );
+
+          if (indice >= 0) {
+            todosAlunosCache[indice] = { ...todosAlunosCache[indice], ...dados };
+          }
+
+          const titulo = containerGlobal.querySelector('.admin-cabecalho h2');
+
+          if (titulo) titulo.textContent = aluno.nome;
+
+          alert('Dados atualizados com sucesso!');
+        } catch (erro) {
+          erroEl.textContent = erro.message || 'Erro ao atualizar aluno.';
+        } finally {
+          botao.disabled = false;
+        }
+      });
 
   const formVincular = document.getElementById('form-vincular');
+
   if (formVincular) {
-    formVincular.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    formVincular.addEventListener('submit', async evento => {
+      evento.preventDefault();
+
       const erroEl = document.getElementById('erro-vincular');
+      const botao = formVincular.querySelector('button[type="submit"]');
+
       erroEl.textContent = '';
-      const { error } = await vincularAlunoPorEmail(aluno.id, document.getElementById('vincular-email').value);
-      if (error) { erroEl.textContent = error.message; return; }
-      aluno.perfil_id = true;
-      await renderDetalheAluno(aluno);
+      botao.disabled = true;
+
+      try {
+        const email = document.getElementById('vincular-email').value.trim();
+
+        const { error } = await vincularAlunoPorEmail(aluno.id, email);
+
+        if (error) {
+          erroEl.textContent = error.message;
+          return;
+        }
+
+        alert('Login vinculado com sucesso!');
+
+        // Recarrega os dados para refletir o vínculo confirmado no banco.
+        const { data: alunosAtualizados, error: erroLista } = await listarAlunos();
+
+        if (!erroLista) {
+          todosAlunosCache = alunosAtualizados || [];
+          const alunoAtualizado = obterAluno(aluno.id);
+
+          if (alunoAtualizado) {
+            await renderDetalheAluno(alunoAtualizado);
+            return;
+          }
+        }
+
+        aluno.perfil_id = true;
+        await renderDetalheAluno(aluno);
+      } catch (erro) {
+        erroEl.textContent = erro.message || 'Erro ao vincular login.';
+      } finally {
+        botao.disabled = false;
+      }
     });
   }
 
-  document.getElementById('form-anamnese').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { error } = await atualizarAluno(aluno.id, {
-      anamnese: {
-        restricoes: document.getElementById('an-restricoes').value.trim(),
-        nivel: document.getElementById('an-nivel').value,
-        disponibilidade: document.getElementById('an-disponibilidade').value.trim(),
-        observacoes: document.getElementById('an-obs').value.trim(),
-      },
-    });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    alert('Anamnese salva!');
-  });
+  document.getElementById('form-anamnese')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
 
-  document.getElementById('form-treino').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { error } = await adicionarTreino({
-      aluno_id: aluno.id,
-      exercicio: document.getElementById('tr-exercicio').value.trim(),
-      series: document.getElementById('tr-series').value.trim(),
-      reps: document.getElementById('tr-reps').value.trim(),
-      carga: document.getElementById('tr-carga').value.trim(),
-    });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    e.target.reset();
-    await carregarTreinos(aluno.id);
-  });
+        const botao = evento.currentTarget.querySelector('button[type="submit"]');
+        botao.disabled = true;
 
-  document.getElementById('form-dieta').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { error } = await adicionarDieta({
-      aluno_id: aluno.id,
-      horario: document.getElementById('di-horario').value.trim(),
-      refeicao: document.getElementById('di-refeicao').value.trim(),
-      alimentos: document.getElementById('di-alimentos').value.trim(),
-    });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    e.target.reset();
-    await carregarDietas(aluno.id);
-  });
+        try {
+          const anamnese = {
+            restricoes: document.getElementById('an-restricoes').value.trim(),
+            nivel: document.getElementById('an-nivel').value,
+            disponibilidade: document.getElementById('an-disponibilidade').value.trim(),
+            observacoes: document.getElementById('an-obs').value.trim(),
+          };
 
-  document.getElementById('form-avaliacao').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const peso = parseFloat(document.getElementById('av-peso').value);
-    const altura = parseFloat(document.getElementById('av-altura').value);
-    const imc = +(peso / ((altura / 100) * (altura / 100))).toFixed(1);
-    const { error } = await adicionarAvaliacao({
-      aluno_id: aluno.id, peso, altura, imc,
-      cintura: document.getElementById('av-cintura').value || null,
-      quadril: document.getElementById('av-quadril').value || null,
-      braco: document.getElementById('av-braco').value || null,
-      coxa: document.getElementById('av-coxa').value || null,
-    });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    e.target.reset();
-    await carregarAvaliacoes(aluno.id);
-  });
+          const { error } = await atualizarAluno(aluno.id, { anamnese });
 
-  document.getElementById('form-nota').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const texto = document.getElementById('nota-texto').value.trim();
-    if (!texto) return;
-    const { error } = await adicionarNota({ aluno_id: aluno.id, texto });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    e.target.reset();
-    await carregarNotas(aluno.id);
-  });
+          if (error) {
+            alert(`Não foi possível salvar a anamnese: ${error.message}`);
+            return;
+          }
 
-  await carregarTreinos(aluno.id);
-  await carregarDietas(aluno.id);
-  await carregarAvaliacoes(aluno.id);
-  await carregarNotas(aluno.id);
-  await carregarEnvios(aluno.id);
+          aluno.anamnese = anamnese;
+          alert('Anamnese salva com sucesso!');
+        } catch (erro) {
+          alert(erro.message || 'Erro ao salvar anamnese.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  document.getElementById('form-treino')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        botao.disabled = true;
+
+        try {
+          const { error } = await adicionarTreino({
+            aluno_id: aluno.id,
+            exercicio: document.getElementById('tr-exercicio').value.trim(),
+            series: document.getElementById('tr-series').value.trim(),
+            reps: document.getElementById('tr-reps').value.trim(),
+            carga: document.getElementById('tr-carga').value.trim(),
+          });
+
+          if (error) {
+            alert(`Não foi possível salvar o treino: ${error.message}`);
+            return;
+          }
+
+          formulario.reset();
+          await carregarTreinos(aluno.id);
+        } catch (erro) {
+          alert(erro.message || 'Erro ao adicionar exercício.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  document.getElementById('form-dieta')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        botao.disabled = true;
+
+        try {
+          const { error } = await adicionarDieta({
+            aluno_id: aluno.id,
+            horario: document.getElementById('di-horario').value.trim(),
+            refeicao: document.getElementById('di-refeicao').value.trim(),
+            alimentos: document.getElementById('di-alimentos').value.trim(),
+          });
+
+          if (error) {
+            alert(`Não foi possível salvar a refeição: ${error.message}`);
+            return;
+          }
+
+          formulario.reset();
+          await carregarDietas(aluno.id);
+        } catch (erro) {
+          alert(erro.message || 'Erro ao adicionar refeição.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  document.getElementById('form-avaliacao')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        const peso = Number(document.getElementById('av-peso').value);
+        const altura = Number(document.getElementById('av-altura').value);
+
+        if (!(peso > 0) || !(altura > 0)) {
+          alert('Informe um peso e uma altura válidos.');
+          return;
+        }
+
+        const alturaMetros = altura / 100;
+        const imc = Number((peso / (alturaMetros * alturaMetros)).toFixed(1));
+
+        botao.disabled = true;
+
+        try {
+          const { error } = await adicionarAvaliacao({
+            aluno_id: aluno.id,
+            peso,
+            altura,
+            imc,
+            cintura: document.getElementById('av-cintura').value || null,
+            quadril: document.getElementById('av-quadril').value || null,
+            braco: document.getElementById('av-braco').value || null,
+            coxa: document.getElementById('av-coxa').value || null,
+          });
+
+          if (error) {
+            alert(`Não foi possível salvar a avaliação: ${error.message}`);
+            return;
+          }
+
+          formulario.reset();
+          await carregarAvaliacoes(aluno.id);
+        } catch (erro) {
+          alert(erro.message || 'Erro ao registrar avaliação.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  document.getElementById('form-nota')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+        const texto = document.getElementById('nota-texto').value.trim();
+
+        if (!texto) return;
+
+        botao.disabled = true;
+
+        try {
+          const { error } = await adicionarNota({
+            aluno_id: aluno.id,
+            texto,
+          });
+
+          if (error) {
+            alert(`Não foi possível salvar a nota: ${error.message}`);
+            return;
+          }
+
+          formulario.reset();
+          await carregarNotas(aluno.id);
+        } catch (erro) {
+          alert(erro.message || 'Erro ao adicionar nota.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  await Promise.all([
+    carregarTreinos(aluno.id),
+    carregarDietas(aluno.id),
+    carregarAvaliacoes(aluno.id),
+    carregarNotas(aluno.id),
+    carregarEnvios(aluno.id),
+  ]);
 }
+
+// ============================================================
+// TREINOS
+// ============================================================
 
 async function carregarTreinos(alunoId) {
   const el = document.getElementById('lista-treinos');
-  const { data, error } = await listarTreinos(alunoId);
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
 
-  if (!data.length) {
-    el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-dumbbell"></i>Nenhum exercício ainda.</div>';
-    return;
-  }
+  if (!el) return;
 
-  el.innerHTML = data.map(t => `
-    <div class="card-aluno" style="cursor:default">
-      <div class="info-aluno">
-        <strong>${escapar(t.exercicio)}</strong>
-        <span>${escapar(t.series || '-')} x ${escapar(t.reps || '-')}${t.carga ? ' · ' + escapar(t.carga) : ''}</span>
+  try {
+    const { data, error } = await listarTreinos(alunoId);
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-dumbbell', 'Nenhum exercício cadastrado.');
+      return;
+    }
+
+    el.innerHTML = data.map(treino => `
+      <div class="card-aluno admin-item-registro">
+        <div class="info-aluno">
+          <strong>${escapar(treino.exercicio)}</strong>
+          <span>
+            ${escapar(treino.series || '-')} séries ×
+            ${escapar(treino.reps || '-')} repetições
+            ${treino.carga ? ` · ${escapar(treino.carga)}` : ''}
+          </span>
+        </div>
+        ${botaoRemover(treino.id, 'Remover exercício')}
       </div>
-      <button class="btn-remover" data-id="${t.id}"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-  `).join('');
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover este exercício?')) return;
-      await removerTreino(btn.dataset.id);
-      await carregarTreinos(alunoId);
+    `).join('');
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover este exercício?')) return;
+
+        const { error: erroRemocao } = await removerTreino(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarTreinos(alunoId);
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
+
+// ============================================================
+// DIETAS
+// ============================================================
 
 async function carregarDietas(alunoId) {
   const el = document.getElementById('lista-dietas');
-  const { data, error } = await listarDietas(alunoId);
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-bowl-food"></i>Nenhuma refeição ainda.</div>'; return; }
-  el.innerHTML = data.map(d => `
-    <div class="card-aluno" style="cursor:default">
-      <div class="info-aluno">
-        <strong>${d.horario ? escapar(d.horario) + ' — ' : ''}${escapar(d.refeicao)}</strong>
-        <span>${escapar(d.alimentos || '')}</span>
+
+  if (!el) return;
+
+  try {
+    const { data, error } = await listarDietas(alunoId);
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-bowl-food', 'Nenhuma refeição cadastrada.');
+      return;
+    }
+
+    el.innerHTML = data.map(dieta => `
+      <div class="card-aluno admin-item-registro">
+        <div class="info-aluno">
+          <strong>
+            ${dieta.horario ? `${escapar(dieta.horario)} — ` : ''}
+            ${escapar(dieta.refeicao)}
+          </strong>
+          <span>${escapar(dieta.alimentos || 'Alimentos não informados')}</span>
+        </div>
+        ${botaoRemover(dieta.id, 'Remover refeição')}
       </div>
-      <button class="btn-remover" data-id="${d.id}"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-  `).join('');
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover esta refeição?')) return;
-      await removerDieta(btn.dataset.id);
-      await carregarDietas(alunoId);
+    `).join('');
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover esta refeição?')) return;
+
+        const { error: erroRemocao } = await removerDieta(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarDietas(alunoId);
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
+
+// ============================================================
+// AVALIAÇÕES FÍSICAS
+// ============================================================
 
 async function carregarAvaliacoes(alunoId) {
   const el = document.getElementById('lista-avaliacoes');
-  const { data, error } = await listarAvaliacoes(alunoId);
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-weight-scale"></i>Nenhuma avaliação registrada ainda.</div>'; return; }
-  const ordenadas = data.slice().reverse();
-  el.innerHTML = ordenadas.map(v => `
-    <div class="card-aluno" style="cursor:default">
-      <div class="info-aluno">
-        <strong>${new Date(v.data).toLocaleDateString('pt-BR')} — ${v.peso}kg</strong>
-        <span>IMC ${v.imc}${v.cintura ? ' · cintura ' + v.cintura + 'cm' : ''}${v.quadril ? ' · quadril ' + v.quadril + 'cm' : ''}</span>
+
+  if (!el) return;
+
+  try {
+    const { data, error } = await listarAvaliacoes(alunoId);
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-weight-scale', 'Nenhuma avaliação registrada.');
+      return;
+    }
+
+    const ordenadas = [...data].sort((a, b) =>
+        new Date(b.data) - new Date(a.data)
+    );
+
+    el.innerHTML = ordenadas.map(avaliacao => `
+      <div class="card-aluno admin-item-registro">
+        <div class="info-aluno">
+          <strong>
+            ${formatarData(avaliacao.data)} · ${escapar(avaliacao.peso)} kg
+          </strong>
+          <span>
+            Altura: ${escapar(avaliacao.altura)} cm
+            · IMC: ${escapar(avaliacao.imc)}
+          </span>
+          <span>
+            ${avaliacao.cintura ? `Cintura: ${escapar(avaliacao.cintura)} cm · ` : ''}
+            ${avaliacao.quadril ? `Quadril: ${escapar(avaliacao.quadril)} cm · ` : ''}
+            ${avaliacao.braco ? `Braço: ${escapar(avaliacao.braco)} cm · ` : ''}
+            ${avaliacao.coxa ? `Coxa: ${escapar(avaliacao.coxa)} cm` : ''}
+          </span>
+        </div>
+        ${botaoRemover(avaliacao.id, 'Remover avaliação')}
       </div>
-      <button class="btn-remover" data-id="${v.id}"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-  `).join('');
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover esta avaliação?')) return;
-      await removerAvaliacao(btn.dataset.id);
-      await carregarAvaliacoes(alunoId);
+    `).join('');
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover esta avaliação?')) return;
+
+        const { error: erroRemocao } = await removerAvaliacao(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarAvaliacoes(alunoId);
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
+
+// ============================================================
+// NOTAS DE CONSULTORIA
+// ============================================================
 
 async function carregarNotas(alunoId) {
   const el = document.getElementById('lista-notas');
-  const { data, error } = await listarNotas(alunoId);
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-comment-medical"></i>Nenhuma nota ainda.</div>'; return; }
-  el.innerHTML = data.map(n => `
-    <div class="card-aluno" style="cursor:default;align-items:flex-start">
-      <div class="info-aluno">
-        <strong>${new Date(n.data).toLocaleDateString('pt-BR')}</strong>
-        <span>${escapar(n.texto)}</span>
+
+  if (!el) return;
+
+  try {
+    const { data, error } = await listarNotas(alunoId);
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-comment-medical', 'Nenhuma nota registrada.');
+      return;
+    }
+
+    el.innerHTML = data.map(nota => `
+      <div class="card-aluno admin-item-registro">
+        <div class="info-aluno">
+          <strong>${formatarData(nota.data)}</strong>
+          <span>${escapar(nota.texto)}</span>
+        </div>
+        ${botaoRemover(nota.id, 'Remover nota')}
       </div>
-      <button class="btn-remover" data-id="${n.id}"><i class="fa-solid fa-xmark"></i></button>
-    </div>
-  `).join('');
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover esta nota?')) return;
-      await removerNota(btn.dataset.id);
-      await carregarNotas(alunoId);
+    `).join('');
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover esta nota?')) return;
+
+        const { error: erroRemocao } = await removerNota(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarNotas(alunoId);
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
+
+// ============================================================
+// FOTOS, VÍDEOS E DEVOLUTIVAS
+// ============================================================
 
 async function carregarEnvios(alunoId) {
   const el = document.getElementById('lista-envios');
-  const { data, error } = await listarEnvios(alunoId);
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-camera"></i>Nenhum envio ainda.</div>'; return; }
-  el.innerHTML = data.map(v => `
-    <div class="card-envio">
-      ${v.tipo === 'video' ? `<video src="${v.asset_url}" controls class="midia-envio"></video>` : `<img src="${v.asset_url}" class="midia-envio" alt="Envio" />`}
-      ${v.legenda ? `<p class="legenda-envio">${escapar(v.legenda)}</p>` : ''}
-      ${v.devolucao_texto ? `<div class="devolucao-pronta"><strong>Sua devolução:</strong> ${escapar(v.devolucao_texto)}</div>` : `
-        <form class="form-devolucao" data-id="${v.id}">
-          <textarea placeholder="Escreva a devolução para este envio..." required></textarea>
-          <button type="submit"><i class="fa-solid fa-paper-plane"></i> Enviar devolução</button>
-        </form>
-      `}
-    </div>
-  `).join('');
-  el.querySelectorAll('.form-devolucao').forEach(form => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const texto = form.querySelector('textarea').value.trim();
-      if (!texto) return;
-      const { error } = await responderEnvio(form.dataset.id, texto);
-      if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-      await carregarEnvios(alunoId);
+
+  if (!el) return;
+
+  try {
+    const { data, error } = await listarEnvios(alunoId);
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-camera', 'Nenhuma foto ou vídeo enviado.');
+      return;
+    }
+
+    el.innerHTML = data.map(envio => `
+      <article class="card-envio admin-card-midia">
+        <div class="admin-midia-cabecalho">
+          <span class="tag">
+            <i class="fa-solid ${envio.tipo === 'video' ? 'fa-video' : 'fa-image'}"></i>
+            ${envio.tipo === 'video' ? 'Vídeo' : 'Foto'}
+          </span>
+          <span class="admin-data-midia">${formatarData(envio.criado_em)}</span>
+        </div>
+
+        ${envio.tipo === 'video'
+        ? `<video src="${escapar(envio.asset_url)}" controls class="midia-envio"></video>`
+        : `<a href="${escapar(envio.asset_url)}" target="_blank" rel="noopener noreferrer">
+               <img src="${escapar(envio.asset_url)}" class="midia-envio" alt="Foto enviada pelo aluno" loading="lazy" />
+             </a>`
+    }
+
+        ${envio.legenda ? `
+          <p class="legenda-envio">${escapar(envio.legenda)}</p>
+        ` : ''}
+
+        ${envio.devolucao_texto ? `
+          <div class="devolucao-pronta">
+            <strong><i class="fa-solid fa-check-circle"></i> Devolutiva enviada</strong>
+            <p>${escapar(envio.devolucao_texto)}</p>
+          </div>
+        ` : `
+          <form class="form-devolucao" data-id="${escapar(envio.id)}">
+            <label>Escreva sua devolutiva</label>
+            <textarea placeholder="Comente a evolução e oriente o aluno..." required></textarea>
+            <button type="submit" class="admin-btn-principal">
+              <i class="fa-solid fa-paper-plane"></i>
+              Enviar devolutiva
+            </button>
+          </form>
+        `}
+      </article>
+    `).join('');
+
+    el.querySelectorAll('.form-devolucao').forEach(formulario => {
+      formulario.addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const textarea = formulario.querySelector('textarea');
+        const botao = formulario.querySelector('button');
+        const texto = textarea.value.trim();
+
+        if (!texto) return;
+
+        botao.disabled = true;
+
+        try {
+          const { error: erroResposta } = await responderEnvio(
+              formulario.dataset.id,
+              texto
+          );
+
+          if (erroResposta) {
+            alert(`Não foi possível enviar a devolutiva: ${erroResposta.message}`);
+            return;
+          }
+
+          await carregarEnvios(alunoId);
+        } catch (erro) {
+          alert(erro.message || 'Erro ao enviar devolutiva.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
 
-// ==============================================================
+// ============================================================
 // BIBLIOTECA DE EXERCÍCIOS
-// ==============================================================
+// ============================================================
+
 async function renderBiblioteca() {
   containerGlobal.innerHTML = `
-    <div class="secao">
-      <span class="eyebrow">Conteúdo da consultoria</span>
-      <h2>Biblioteca de exercícios</h2>
-      <div id="lista-biblioteca" class="lista-cards"><p>Carregando...</p></div>
-      <form id="form-biblioteca" class="caixa-form">
-        <h3>Novo exercício</h3>
-        <label>Nome</label>
+    <div class="secao admin-painel">
+      <div class="admin-cabecalho">
+        <div>
+          <span class="eyebrow">CONTEÚDO DA CONSULTORIA</span>
+          <h2>Biblioteca de exercícios</h2>
+          <p class="admin-subtitulo">
+            Organize os exercícios e materiais da sua consultoria.
+          </p>
+        </div>
+      </div>
+
+      <div id="lista-biblioteca" class="lista-cards">
+        <p>Carregando biblioteca...</p>
+      </div>
+
+      <form id="form-biblioteca" class="caixa-form admin-form">
+        <div class="admin-form-titulo">
+          <span class="admin-icone-titulo">
+            <i class="fa-solid fa-book-open"></i>
+          </span>
+          <div>
+            <h3>Novo exercício</h3>
+            <p>Adicione as instruções e os materiais de apoio.</p>
+          </div>
+        </div>
+
+        <label for="bi-nome">Nome do exercício</label>
         <input type="text" id="bi-nome" required />
-        <label>Grupo muscular</label>
-        <input type="text" id="bi-grupo" placeholder="Peito, pernas..." />
-        <label>Como executar</label>
-        <textarea id="bi-como"></textarea>
-        <label>Link do vídeo</label>
+
+        <label for="bi-grupo">Grupo muscular</label>
+        <input type="text" id="bi-grupo" placeholder="Peito, pernas, costas..." />
+
+        <label for="bi-como">Como executar</label>
+        <textarea id="bi-como" placeholder="Descreva a execução correta..."></textarea>
+
+        <label for="bi-video">Link do vídeo</label>
         <input type="url" id="bi-video" placeholder="https://..." />
-        <label>Foto do exercício</label>
+
+        <label for="bi-imagem">Foto do exercício</label>
         <input type="file" id="bi-imagem" accept="image/*" />
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar à biblioteca</button>
-        <div id="erro-biblioteca" class="erro"></div>
+
+        <button type="submit" class="admin-btn-principal">
+          <i class="fa-solid fa-plus"></i>
+          Adicionar à biblioteca
+        </button>
+
+        <div id="erro-biblioteca" class="erro" role="alert"></div>
       </form>
     </div>
   `;
 
-  document.getElementById('form-biblioteca').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const erroEl = document.getElementById('erro-biblioteca');
-    erroEl.textContent = '';
-    const btn = e.target.querySelector('button');
-    btn.disabled = true;
+  document.getElementById('form-biblioteca')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
 
-    const { error } = await criarExercicioBiblioteca({
-      nome: document.getElementById('bi-nome').value.trim(),
-      grupo: document.getElementById('bi-grupo').value.trim(),
-      comoExecutar: document.getElementById('bi-como').value.trim(),
-      video: document.getElementById('bi-video').value.trim(),
-      imagemArquivo: document.getElementById('bi-imagem').files[0] || null,
-    });
-    btn.disabled = false;
-    if (error) { erroEl.textContent = 'Não foi possível salvar: ' + error.message; return; }
-    e.target.reset();
-    await carregarBiblioteca();
-  });
+        const formulario = evento.currentTarget;
+        const erroEl = document.getElementById('erro-biblioteca');
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        erroEl.textContent = '';
+        botao.disabled = true;
+        botao.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+
+        try {
+          const { error } = await criarExercicioBiblioteca({
+            nome: document.getElementById('bi-nome').value.trim(),
+            grupo: document.getElementById('bi-grupo').value.trim(),
+            comoExecutar: document.getElementById('bi-como').value.trim(),
+            video: document.getElementById('bi-video').value.trim(),
+            imagemArquivo: document.getElementById('bi-imagem').files[0] || null,
+          });
+
+          if (error) {
+            erroEl.textContent = `Não foi possível salvar: ${error.message}`;
+            return;
+          }
+
+          formulario.reset();
+          await carregarBiblioteca();
+        } catch (erro) {
+          erroEl.textContent = erro.message || 'Erro ao adicionar exercício.';
+        } finally {
+          botao.disabled = false;
+          botao.innerHTML = '<i class="fa-solid fa-plus"></i> Adicionar à biblioteca';
+        }
+      });
 
   await carregarBiblioteca();
 }
 
 async function carregarBiblioteca() {
   const el = document.getElementById('lista-biblioteca');
-  const { data, error } = await listarBiblioteca();
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-book"></i>Nenhum exercício na biblioteca ainda.</div>'; return; }
-  el.innerHTML = data.map(b => `
-    <div class="card-envio">
-      ${b.imagem_url ? `<img src="${b.imagem_url}" class="midia-envio" style="max-height:180px" alt="${escapar(b.nome)}" />` : ''}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <strong>${escapar(b.nome)}</strong>${b.grupo ? ` <span class="tag">${escapar(b.grupo)}</span>` : ''}
-          ${b.como_executar ? `<p class="legenda-envio">${escapar(b.como_executar)}</p>` : ''}
-          ${b.video ? `<a href="${escapar(b.video)}" target="_blank" rel="noopener" style="font-size:13px;color:var(--accent)"><i class="fa-solid fa-video"></i> Ver vídeo</a>` : ''}
+
+  if (!el) return;
+
+  try {
+    const { data, error } = await listarBiblioteca();
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-book-open', 'Nenhum exercício cadastrado.');
+      return;
+    }
+
+    el.innerHTML = data.map(exercicio => `
+      <article class="card-envio admin-card-biblioteca">
+        ${exercicio.imagem_url ? `
+          <img
+            src="${escapar(exercicio.imagem_url)}"
+            class="midia-envio"
+            alt="${escapar(exercicio.nome)}"
+            loading="lazy"
+          />
+        ` : ''}
+
+        <div class="admin-biblioteca-conteudo">
+          <div>
+            <strong>${escapar(exercicio.nome)}</strong>
+            ${exercicio.grupo ? `<span class="tag">${escapar(exercicio.grupo)}</span>` : ''}
+          </div>
+
+          ${exercicio.como_executar ? `
+            <p class="legenda-envio">${escapar(exercicio.como_executar)}</p>
+          ` : ''}
+
+          ${exercicio.video ? `
+            <a href="${escapar(exercicio.video)}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-solid fa-video"></i>
+              Assistir vídeo
+            </a>
+          ` : ''}
         </div>
-        <button class="btn-remover" data-id="${b.id}"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-    </div>
-  `).join('');
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover este exercício da biblioteca?')) return;
-      await removerExercicioBiblioteca(btn.dataset.id);
-      await carregarBiblioteca();
+
+        ${botaoRemover(exercicio.id, 'Remover exercício da biblioteca')}
+      </article>
+    `).join('');
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover este exercício da biblioteca?')) return;
+
+        const { error: erroRemocao } = await removerExercicioBiblioteca(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarBiblioteca();
+      });
     });
-  });
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
 
-// ==============================================================
+// ============================================================
 // PLANOS
-// ==============================================================
+// ============================================================
+
 async function renderPlanos() {
   containerGlobal.innerHTML = `
-    <div class="secao">
-      <span class="eyebrow">Página de vendas</span>
-      <h2>Planos</h2>
-      <div id="lista-planos"><p>Carregando...</p></div>
-      <form id="form-plano" class="caixa-form">
-        <h3>Novo plano</h3>
-        <label>Nome do plano</label>
+    <div class="secao admin-painel">
+      <div class="admin-cabecalho">
+        <div>
+          <span class="eyebrow">PÁGINA DE VENDAS</span>
+          <h2>Planos da consultoria</h2>
+          <p class="admin-subtitulo">
+            Gerencie os planos e os benefícios oferecidos.
+          </p>
+        </div>
+      </div>
+
+      <div id="lista-planos">
+        <p>Carregando planos...</p>
+      </div>
+
+      <form id="form-plano" class="caixa-form admin-form">
+        <div class="admin-form-titulo">
+          <span class="admin-icone-titulo">
+            <i class="fa-solid fa-tags"></i>
+          </span>
+          <div>
+            <h3>Novo plano</h3>
+            <p>Cadastre um plano para sua consultoria.</p>
+          </div>
+        </div>
+
+        <label for="pl-nome">Nome do plano</label>
         <input type="text" id="pl-nome" required />
-        <label>Preço</label>
+
+        <label for="pl-preco">Preço</label>
         <input type="text" id="pl-preco" placeholder="R$ 199/mês" />
-        <label>Descrição / benefícios</label>
-        <textarea id="pl-desc"></textarea>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
-          <input type="checkbox" id="pl-destaque" style="width:auto;margin-top:0" /> Plano em destaque
+
+        <label for="pl-desc">Descrição e benefícios</label>
+        <textarea id="pl-desc" placeholder="Liste o que está incluído..."></textarea>
+
+        <label class="admin-checkbox">
+          <input type="checkbox" id="pl-destaque" />
+          <span>Destacar este plano</span>
         </label>
-        <button type="submit"><i class="fa-solid fa-plus"></i> Adicionar plano</button>
+
+        <button type="submit" class="admin-btn-principal">
+          <i class="fa-solid fa-plus"></i>
+          Adicionar plano
+        </button>
       </form>
     </div>
   `;
 
-  document.getElementById('form-plano').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const { error } = await criarPlano({
-      nome: document.getElementById('pl-nome').value.trim(),
-      preco: document.getElementById('pl-preco').value.trim(),
-      descricao: document.getElementById('pl-desc').value.trim(),
-      destaque: document.getElementById('pl-destaque').checked,
-    });
-    if (error) { alert('Não foi possível salvar: ' + error.message); return; }
-    e.target.reset();
-    await carregarPlanos();
-  });
+  document.getElementById('form-plano')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+
+        botao.disabled = true;
+
+        try {
+          const { error } = await criarPlano({
+            nome: document.getElementById('pl-nome').value.trim(),
+            preco: document.getElementById('pl-preco').value.trim(),
+            descricao: document.getElementById('pl-desc').value.trim(),
+            destaque: document.getElementById('pl-destaque').checked,
+          });
+
+          if (error) {
+            alert(`Não foi possível salvar o plano: ${error.message}`);
+            return;
+          }
+
+          formulario.reset();
+          await carregarPlanos();
+        } catch (erro) {
+          alert(erro.message || 'Erro ao cadastrar plano.');
+        } finally {
+          botao.disabled = false;
+        }
+      });
 
   await carregarPlanos();
 }
 
 async function carregarPlanos() {
   const el = document.getElementById('lista-planos');
-  const { data, error } = await listarPlanos();
-  if (error) { el.innerHTML = `<p class="erro">${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<div class="vazio-rico"><i class="fa-solid fa-tag"></i>Nenhum plano cadastrado ainda.</div>'; return; }
 
-  el.innerHTML = `<div class="planos-grid">` + data.map(p => `
-    <div class="card-envio plano-card ${p.destaque ? 'plano-destaque' : ''}">
-      ${p.destaque ? '<div class="plano-ribbon"><i class="fa-solid fa-star"></i> Mais popular</div>' : ''}
-      <strong style="font-size:17px">${escapar(p.nome)}</strong>
-      ${p.preco ? `<div class="plano-preco">${escapar(p.preco)}</div>` : ''}
-      <p class="legenda-envio">${escapar(p.descricao || '').replace(/\n/g, '<br>')}</p>
-      <button class="btn-remover" data-id="${p.id}"><i class="fa-solid fa-xmark"></i> remover</button>
-    </div>
-  `).join('') + `</div>`;
+  if (!el) return;
 
-  el.querySelectorAll('.btn-remover').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Remover este plano?')) return;
-      await removerPlano(btn.dataset.id);
-      await carregarPlanos();
+  try {
+    const { data, error } = await listarPlanos();
+
+    if (error) {
+      mostrarErro(el, error);
+      return;
+    }
+
+    if (!data?.length) {
+      el.innerHTML = mensagemVazia('fa-tags', 'Nenhum plano cadastrado.');
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="planos-grid admin-planos-grid">
+        ${data.map(plano => `
+          <article class="card-envio plano-card ${plano.destaque ? 'plano-destaque' : ''}">
+            ${plano.destaque ? `
+              <div class="plano-ribbon">
+                <i class="fa-solid fa-star"></i>
+                Em destaque
+              </div>
+            ` : ''}
+
+            <div class="admin-plano-icone">
+              <i class="fa-solid fa-leaf"></i>
+            </div>
+
+            <strong class="admin-plano-nome">${escapar(plano.nome)}</strong>
+
+            ${plano.preco ? `
+              <div class="plano-preco">${escapar(plano.preco)}</div>
+            ` : ''}
+
+            <p class="legenda-envio">
+              ${escapar(plano.descricao || 'Sem descrição cadastrada.').replace(/\n/g, '<br>')}
+            </p>
+
+            ${botaoRemover(plano.id, 'Remover plano')}
+          </article>
+        `).join('')}
+      </div>
+    `;
+
+    el.querySelectorAll('.btn-remover').forEach(botao => {
+      botao.addEventListener('click', async () => {
+        if (!confirm('Remover este plano?')) return;
+
+        const { error: erroRemocao } = await removerPlano(botao.dataset.id);
+
+        if (erroRemocao) {
+          alert(erroRemocao.message);
+          return;
+        }
+
+        await carregarPlanos();
+      });
     });
-  });
-}
-
-function escapar(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  } catch (erro) {
+    mostrarErro(el, erro);
+  }
 }
