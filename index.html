@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema da Maiza</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+<div id="app">
+  <div id="tela-carregando" class="tela-centro">
+    <p>Carregando...</p>
+  </div>
+
+  <div id="tela-login" class="tela-centro" style="display:none">
+    <form id="form-login" class="caixa-login">
+      <div class="logo-login">M</div>
+      <h1>Sistema da Maiza</h1>
+      <p class="sub" id="login-sub">Entre com seu e-mail e senha</p>
+      <label>E-mail</label>
+      <input type="email" id="login-email" required />
+      <label>Senha</label>
+      <input type="password" id="login-senha" required />
+      <button type="submit" id="btn-entrar"><i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar</button>
+      <button type="button" id="btn-ir-cadastro" class="link-botao">Não tenho conta — criar uma</button>
+      <div id="login-erro" class="erro"></div>
+    </form>
+  </div>
+
+  <div id="tela-cadastro" class="tela-centro" style="display:none">
+    <form id="form-cadastro" class="caixa-login">
+      <div class="logo-login">M</div>
+      <h1>Criar conta</h1>
+      <p class="sub">Use o e-mail que a Maiza cadastrou pra você</p>
+      <label>Nome</label>
+      <input type="text" id="cad-nome" required />
+      <label>E-mail</label>
+      <input type="email" id="cad-email" required />
+      <label>Senha</label>
+      <input type="password" id="cad-senha" required minlength="6" />
+      <button type="submit"><i class="fa-solid fa-user-plus"></i> Criar conta</button>
+      <button type="button" id="btn-ir-login" class="link-botao">Já tenho conta — entrar</button>
+      <div id="cadastro-erro" class="erro"></div>
+    </form>
+  </div>
+
+  <div id="tela-painel" class="app-shell" style="display:none">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">M</span>
+        <span>MAIZA<br><b>GUIMARÃES</b></span>
+      </div>
+      <nav id="nav-admin" style="display:none">
+        <button class="nav-link active" data-secao="alunos"><i class="fa-solid fa-user-group"></i><span>Alunos</span></button>
+        <button class="nav-link" data-secao="biblioteca"><i class="fa-solid fa-book"></i><span>Biblioteca</span></button>
+        <button class="nav-link" data-secao="planos"><i class="fa-solid fa-tag"></i><span>Planos</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="coach-mini">
+          <div class="avatar" id="avatar-letra">?</div>
+          <div><strong id="saudacao">...</strong><small id="papel-usuario"></small></div>
+        </div>
+        <button id="btn-sair" class="btn-sair-sidebar"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+      </div>
+    </aside>
+
+    <div class="area-principal">
+      <header class="topo-painel">
+        <button class="menu-button" id="btn-menu"><i class="fa-solid fa-bars"></i></button>
+        <div>
+          <span class="eyebrow" id="topo-data"></span>
+          <h1 id="topo-saudacao">Olá</h1>
+        </div>
+      </header>
+      <main id="conteudo-painel"></main>
+    </div>
+  </div>
+</div>
+
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+<div class="modal-overlay" id="treino-modal">
+  <div class="modal-caixa">
+    <div class="vazio" id="tw-progresso">Exercício 1 de 1</div>
+    <h3 id="tw-nome" style="font-family:'Playfair Display',serif;font-size:22px;margin:4px 0"></h3>
+    <div class="tag" id="tw-detalhes" style="font-size:14px"></div>
+    <p class="vazio" id="tw-como" style="margin:10px 0"></p>
+
+    <div class="anel-timer">
+      <svg viewBox="0 0 120 120">
+        <circle class="anel-fundo" cx="60" cy="60" r="54" />
+        <circle class="anel-progresso" id="tw-anel" cx="60" cy="60" r="54" />
+      </svg>
+      <div id="tw-timer" class="anel-numero">1:00</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;margin:12px 0">
+      <button class="secundario" onclick="window.treinoTimerAjustar(-15)">-15s</button>
+      <button id="tw-play-btn" onclick="window.treinoTimerToggle()"><i class="fa-solid fa-play"></i> Descanso</button>
+      <button class="secundario" onclick="window.treinoTimerAjustar(15)">+15s</button>
+    </div>
+
+    <button onclick="window.treinoProximo()" style="width:100%"><i class="fa-solid fa-arrow-right"></i> Concluir e próximo</button>
+    <button class="secundario" onclick="window.fecharTreino()" style="width:100%">Encerrar treino</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
