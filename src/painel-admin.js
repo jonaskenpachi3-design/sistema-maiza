@@ -459,7 +459,6 @@ function desenharListaAlunos(alunos) {
             </span>
           ` : ''}
         </div>
-        ${exercicio.atribuicao ? `<small class="biblioteca-atribuicao">${escapar(exercicio.atribuicao)}</small>` : ''}
       </div>
     </div>
   `).join('');
