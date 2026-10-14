@@ -64,6 +64,12 @@ export async function montarPainelAluno(container) {
         }
 
         const treinos = resultadoTreinos.data || [];
+        const treinosAgrupados = treinos.reduce((grupos, treino) => {
+            const nome = treino.treino_nome || 'Meu treino';
+            if (!grupos.has(nome)) grupos.set(nome, []);
+            grupos.get(nome).push(treino);
+            return grupos;
+        }, new Map());
         const dietas = resultadoDietas.data || [];
         const avaliacoes = resultadoAvaliacoes.data || [];
         const envios = resultadoEnvios.data || [];
@@ -204,17 +210,22 @@ export async function montarPainelAluno(container) {
           ${
             treinos.length
                 ? `
-                <button
-                  type="button"
-                  id="btn-iniciar-treino"
-                  class="btn-destaque"
-                >
-                  <i class="fa-solid fa-play"></i>
-                  Iniciar treino
-                </button>
-
                 <div class="aluno-lista-treinos">
-                  ${treinos.map((treino, indice) => `
+                  ${[...treinosAgrupados].map(([nomeTreino, exercicios]) => `
+                    <section class="aluno-grupo-treino">
+                      <div class="aluno-grupo-treino-cabecalho">
+                        <h4>${escapar(nomeTreino)}</h4>
+                        <button
+                          type="button"
+                          class="btn-destaque btn-iniciar-treino"
+                          data-nome-treino="${escapar(nomeTreino)}"
+                        >
+                          <i class="fa-solid fa-play"></i>
+                          Iniciar treino
+                        </button>
+                      </div>
+                      <div class="aluno-lista-exercicios">
+                  ${exercicios.map((treino, indice) => `
                     <article class="card-aluno aluno-card-treino">
 
                       <span class="aluno-numero-exercicio">
@@ -299,6 +310,9 @@ export async function montarPainelAluno(container) {
 
                       </div>
                     </article>
+                  `).join('')}
+                      </div>
+                    </section>
                   `).join('')}
                 </div>
               `
@@ -598,17 +612,15 @@ export async function montarPainelAluno(container) {
         // INICIAR TREINO
         // ==================================
 
-        const btnIniciar = container.querySelector(
-            '#btn-iniciar-treino'
-        );
-
-        if (btnIniciar) {
-            btnIniciar.addEventListener('click', () => {
-                iniciarTreino(treinos, async () => {
+        container.querySelectorAll('.btn-iniciar-treino').forEach(botao => {
+            botao.addEventListener('click', () => {
+                const exerciciosTreino = treinosAgrupados.get(botao.dataset.nomeTreino);
+                if (!exerciciosTreino?.length) return;
+                iniciarTreino(exerciciosTreino, async () => {
                     await registrarTreinoConcluido();
                 });
             });
-        }
+        });
 
 
         // ==================================

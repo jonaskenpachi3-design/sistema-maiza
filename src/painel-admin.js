@@ -28,6 +28,7 @@ import {
   criarPlano,
   removerPlano,
 } from './supabase-client.js';
+import { TREINOS_PRONTOS } from './treinos-prontos.js';
 
 let containerGlobal = null;
 let todosAlunosCache = [];
@@ -106,6 +107,13 @@ function mostrarErro(elemento, erro) {
       ${escapar(erro?.message || 'Ocorreu um erro inesperado.')}
     </p>
   `;
+}
+
+function mensagemErroBibliotecaTreinos(erro) {
+  const mensagem = erro?.message || 'Não foi possível salvar o treino.';
+  return mensagem.includes('treino_nome')
+      ? `${mensagem} Execute supabase/migrations/20261014_biblioteca_treinos.sql no Supabase e tente novamente.`
+      : mensagem;
 }
 
 function botaoRemover(id, texto = 'Remover') {
@@ -639,8 +647,57 @@ async function renderDetalheAluno(aluno) {
           <p>Carregando...</p>
         </div>
 
+        <form id="form-treino-pronto" class="caixa-form admin-form">
+          <h3>Biblioteca de treinos</h3>
+          <p class="treino-fonte-nota">
+            Selecione um modelo para atribuir todos os exercícios ao aluno.
+            Revise e adapte a rotina conforme a avaliação e as necessidades individuais.
+          </p>
+          <label for="tr-pronto-selecao">Treino pronto</label>
+          <select id="tr-pronto-selecao" required>
+            <option value="">Selecione um treino</option>
+            ${TREINOS_PRONTOS.map(treino => `
+              <option value="${escapar(treino.id)}">${escapar(treino.nome)}</option>
+            `).join('')}
+          </select>
+          <div id="tr-pronto-preview" class="treino-pronto-preview" aria-live="polite"></div>
+          <p id="tr-pronto-mensagem" class="erro" role="alert"></p>
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-circle-plus"></i>
+            Atribuir treino ao aluno
+          </button>
+        </form>
+
+        <form id="form-exercicio-personalizado" class="caixa-form admin-form">
+          <h3>Criar exercício personalizado</h3>
+          <p class="treino-fonte-nota">Cadastre um exercício que não esteja nos catálogos.</p>
+          <label for="tr-personalizado-nome">Nome do exercício</label>
+          <input type="text" id="tr-personalizado-nome" required maxlength="120" />
+          <div class="admin-grid-form admin-grid-tres treino-parametros">
+            <div>
+              <label for="tr-personalizado-series">Séries</label>
+              <input type="number" id="tr-personalizado-series" min="1" max="50" value="3" />
+            </div>
+            <div>
+              <label for="tr-personalizado-reps">Repetições</label>
+              <input type="text" id="tr-personalizado-reps" required maxlength="60" placeholder="Ex.: 10–12" />
+            </div>
+            <div>
+              <label for="tr-personalizado-descanso">Descanso (segundos)</label>
+              <input type="number" id="tr-personalizado-descanso" min="0" step="5" value="60" />
+            </div>
+          </div>
+          <label for="tr-personalizado-instrucoes">Instruções (opcional)</label>
+          <textarea id="tr-personalizado-instrucoes" maxlength="1000"></textarea>
+          <p id="tr-personalizado-mensagem" class="erro" role="alert"></p>
+          <button type="submit" class="admin-btn-principal">
+            <i class="fa-solid fa-plus"></i>
+            Criar exercício
+          </button>
+        </form>
+
         <form id="form-treino" class="caixa-form admin-form">
-          <h3>Pesquisar e adicionar exercício</h3>
+          <h3>Adicionar exercício de um catálogo</h3>
           <p class="treino-fonte-nota">
             Catálogo de nomes e instruções em inglês: Exercises Library, licença MIT.
             Associa um GIF/imagem próprio ou licenciado; será guardado para reutilização.
@@ -1222,6 +1279,105 @@ async function renderDetalheAluno(aluno) {
     resultadosCatalogoProprio.innerHTML = `<p class="erro">Não foi possível carregar os exercícios guardados: ${escapar(erro.message)}</p>`;
   }
 
+  const selecaoTreinoPronto = document.getElementById('tr-pronto-selecao');
+  const previewTreinoPronto = document.getElementById('tr-pronto-preview');
+  const mensagemTreinoPronto = document.getElementById('tr-pronto-mensagem');
+
+  function atualizarPreviewTreinoPronto() {
+    const treino = TREINOS_PRONTOS.find(item => item.id === selecaoTreinoPronto.value);
+    previewTreinoPronto.innerHTML = treino
+        ? `<strong>${escapar(treino.descricao)}</strong>
+           <ul>${treino.exercicios.map(exercicio => `
+             <li>${escapar(exercicio.nome)} — ${exercicio.series} séries × ${escapar(exercicio.reps)}</li>
+           `).join('')}</ul>`
+        : '';
+  }
+
+  selecaoTreinoPronto.addEventListener('change', atualizarPreviewTreinoPronto);
+  document.getElementById('form-treino-pronto')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+        mensagemTreinoPronto.textContent = '';
+
+        const treino = TREINOS_PRONTOS.find(item => item.id === selecaoTreinoPronto.value);
+        if (!treino) {
+          mensagemTreinoPronto.textContent = 'Selecione um treino da biblioteca.';
+          return;
+        }
+
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+        botao.disabled = true;
+        try {
+          const { data: treinosAtribuidos, error: erroLista } = await listarTreinos(aluno.id);
+          if (erroLista) throw erroLista;
+          if (treinosAtribuidos?.some(item => item.treino_nome === treino.nome)) {
+            mensagemTreinoPronto.textContent =
+                'Este treino já está atribuído. Remova os exercícios existentes antes de atribuí-lo novamente.';
+            return;
+          }
+
+          const exercicios = treino.exercicios.map((exercicio, indice) => ({
+            aluno_id: aluno.id,
+            treino_nome: treino.nome,
+            exercicio: exercicio.nome,
+            series: String(exercicio.series),
+            reps: exercicio.reps,
+            descanso: String(exercicio.descanso),
+            carga: '',
+            como_executar: '',
+            ordem: indice + 1,
+          }));
+          const { error } = await adicionarTreino(exercicios);
+          if (error) throw error;
+
+          mensagemTreinoPronto.className = 'admin-mensagem-sucesso';
+          mensagemTreinoPronto.textContent = `${treino.nome} atribuído ao aluno.`;
+          await carregarTreinos(aluno.id);
+        } catch (erro) {
+          mensagemTreinoPronto.className = 'erro';
+          mensagemTreinoPronto.textContent = mensagemErroBibliotecaTreinos(erro);
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
+  document.getElementById('form-exercicio-personalizado')
+      .addEventListener('submit', async evento => {
+        evento.preventDefault();
+        const formulario = evento.currentTarget;
+        const botao = formulario.querySelector('button[type="submit"]');
+        const mensagem = document.getElementById('tr-personalizado-mensagem');
+        mensagem.className = 'erro';
+        mensagem.textContent = '';
+        botao.disabled = true;
+
+        try {
+          const { error } = await adicionarTreino({
+            aluno_id: aluno.id,
+            treino_nome: 'Exercícios personalizados',
+            exercicio: document.getElementById('tr-personalizado-nome').value.trim(),
+            series: document.getElementById('tr-personalizado-series').value,
+            reps: document.getElementById('tr-personalizado-reps').value.trim(),
+            descanso: document.getElementById('tr-personalizado-descanso').value,
+            carga: '',
+            como_executar: document.getElementById('tr-personalizado-instrucoes').value.trim(),
+          });
+          if (error) throw error;
+
+          formulario.reset();
+          document.getElementById('tr-personalizado-series').value = '3';
+          document.getElementById('tr-personalizado-descanso').value = '60';
+          mensagem.className = 'admin-mensagem-sucesso';
+          mensagem.textContent = 'Exercício criado e atribuído ao aluno.';
+          await carregarTreinos(aluno.id);
+        } catch (erro) {
+          mensagem.textContent = mensagemErroBibliotecaTreinos(erro);
+        } finally {
+          botao.disabled = false;
+        }
+      });
+
   document.getElementById('form-treino')
       .addEventListener('submit', async evento => {
         evento.preventDefault();
@@ -1336,6 +1492,7 @@ async function renderDetalheAluno(aluno) {
 
           const { error } = await adicionarTreino({
             aluno_id: aluno.id,
+            treino_nome: 'Exercícios personalizados',
             exercicio: exercicioSelecionado.nome,
             series: '',
             reps,

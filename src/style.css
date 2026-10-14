@@ -2191,6 +2191,32 @@ textarea::placeholder {
   gap: 13px;
 }
 
+.aluno-grupo-treino {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e2e9dc;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.aluno-grupo-treino-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aluno-grupo-treino-cabecalho h4 {
+  margin: 0;
+  color: #344f3a;
+}
+
+.aluno-lista-exercicios {
+  display: grid;
+  gap: 12px;
+}
+
 .aluno-card-treino {
   display: flex;
   align-items: flex-start;
@@ -2265,6 +2291,12 @@ textarea::placeholder {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.aluno-grupo-treino .btn-destaque {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 12px;
 }
 
 .aluno-painel .btn-destaque:hover {
@@ -3329,6 +3361,31 @@ textarea::placeholder {
   font-size: 12px;
 }
 
+.admin-painel .treino-pronto-preview {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--raio-campo);
+  background: var(--bg-alt);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.admin-painel .treino-pronto-preview:empty {
+  display: none;
+}
+
+.admin-painel .treino-pronto-preview ul {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.admin-painel #form-treino-pronto,
+.admin-painel #form-exercicio-personalizado {
+  margin-bottom: 18px;
+}
+
 .admin-painel .treino-abas {
   display: flex;
   gap: 8px;
@@ -3497,6 +3554,15 @@ textarea::placeholder {
 }
 
 @media (max-width: 600px) {
+  .aluno-grupo-treino-cabecalho {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .aluno-grupo-treino .btn-destaque {
+    width: 100%;
+  }
+
   .aluno-card-treino {
     flex-wrap: wrap;
   }
