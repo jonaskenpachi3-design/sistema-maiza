@@ -238,10 +238,12 @@ export async function montarPainelAluno(container) {
 
                         <div class="aluno-dados-exercicio">
 
-                          <span>
-                            <i class="fa-solid fa-repeat"></i>
-                            ${escapar(treino.series || '-')} séries
-                          </span>
+                          ${treino.series ? `
+                            <span>
+                              <i class="fa-solid fa-repeat"></i>
+                              ${escapar(treino.series)} séries
+                            </span>
+                          ` : ''}
 
                           <span>
                             <i class="fa-solid fa-hashtag"></i>
@@ -253,7 +255,7 @@ export async function montarPainelAluno(container) {
                         ? `
                                 <span>
                                   <i class="fa-regular fa-clock"></i>
-                                  ${escapar(treino.descanso)} descanso
+                                  ${escapar(treino.descanso)} s descanso entre séries
                                 </span>
                               `
                         : ''
@@ -290,6 +292,10 @@ export async function montarPainelAluno(container) {
                         ` : ''}
 
                         ${treino.atribuicao ? `<small class="biblioteca-atribuicao">${escapar(treino.atribuicao)}</small>` : ''}
+                        ${urlHttp(treino.fonte) ? `<a href="${escapar(urlHttp(treino.fonte))}" target="_blank" rel="noopener noreferrer" class="admin-link aluno-link-demonstracao">Fonte da imagem</a>` : ''}
+                        ${urlHttp(treino.licenca_url) ? `<a href="${escapar(urlHttp(treino.licenca_url))}" target="_blank" rel="noopener noreferrer" class="admin-link aluno-link-demonstracao">Licença da imagem</a>` : ''}
+                        ${urlHttp(treino.fonte_texto) ? `<a href="${escapar(urlHttp(treino.fonte_texto))}" target="_blank" rel="noopener noreferrer" class="admin-link aluno-link-demonstracao">Fonte do exercício</a>` : ''}
+                        ${urlHttp(treino.licenca_texto_url) ? `<a href="${escapar(urlHttp(treino.licenca_texto_url))}" target="_blank" rel="noopener noreferrer" class="admin-link aluno-link-demonstracao">Licença do texto</a>` : ''}
 
                       </div>
                     </article>

@@ -223,6 +223,25 @@ export async function listarBiblioteca() {
   return { data: data || [], error };
 }
 
+export async function buscarExercicioBibliotecaPorIdExterno(idExterno) {
+  return supabase
+      .from('biblioteca_exercicios')
+      .select('*')
+      .eq('id_externo', idExterno)
+      .maybeSingle();
+}
+
+async function uploadImagemBiblioteca(imagemArquivo) {
+  const nomeArquivo = `${Date.now()}-${imagemArquivo.name}`;
+  const { error } = await supabase.storage
+      .from('biblioteca')
+      .upload(nomeArquivo, imagemArquivo);
+  if (error) return { error };
+
+  const { data } = supabase.storage.from('biblioteca').getPublicUrl(nomeArquivo);
+  return { imagemUrl: data.publicUrl };
+}
+
 export async function criarExercicioBiblioteca({
   nome,
   grupo,
@@ -232,19 +251,18 @@ export async function criarExercicioBiblioteca({
   imagemUrl,
   fonte,
   atribuicao,
+  licencaUrl,
+  fonteTexto,
+  licencaTextoUrl,
+  idExterno,
   imagemArquivo,
 }) {
   let urlImagem = imagemUrl || null;
 
   if (imagemArquivo) {
-    const nomeArquivo = `${Date.now()}-${imagemArquivo.name}`;
-    const { error: erroUpload } = await supabase.storage
-        .from('biblioteca')
-        .upload(nomeArquivo, imagemArquivo);
-    if (erroUpload) return { error: erroUpload };
-
-    const { data: urlData } = supabase.storage.from('biblioteca').getPublicUrl(nomeArquivo);
-    urlImagem = urlData.publicUrl;
+    const resultadoUpload = await uploadImagemBiblioteca(imagemArquivo);
+    if (resultadoUpload.error) return { error: resultadoUpload.error };
+    urlImagem = resultadoUpload.imagemUrl;
   }
 
   return supabase.from('biblioteca_exercicios').insert({
@@ -256,7 +274,44 @@ export async function criarExercicioBiblioteca({
     imagem_url: urlImagem,
     fonte,
     atribuicao,
+    licenca_url: licencaUrl,
+    fonte_texto: fonteTexto,
+    licenca_texto_url: licencaTextoUrl,
+    ...(idExterno ? { id_externo: idExterno } : {}),
   }).select().single();
+}
+
+export async function atualizarImagemExercicioBiblioteca(id, {
+  imagemUrl,
+  fonte,
+  atribuicao,
+  licencaUrl,
+  fonteTexto,
+  licencaTextoUrl,
+  imagemArquivo,
+}) {
+  const alteracoes = {};
+
+  if (imagemArquivo) {
+    const resultadoUpload = await uploadImagemBiblioteca(imagemArquivo);
+    if (resultadoUpload.error) return { error: resultadoUpload.error };
+    alteracoes.imagem_url = resultadoUpload.imagemUrl;
+  } else if (imagemUrl) {
+    alteracoes.imagem_url = imagemUrl;
+  }
+
+  if (fonte !== undefined) alteracoes.fonte = fonte || null;
+  if (atribuicao !== undefined) alteracoes.atribuicao = atribuicao || null;
+  if (licencaUrl !== undefined) alteracoes.licenca_url = licencaUrl || null;
+  if (fonteTexto !== undefined) alteracoes.fonte_texto = fonteTexto || null;
+  if (licencaTextoUrl !== undefined) alteracoes.licenca_texto_url = licencaTextoUrl || null;
+
+  return supabase
+      .from('biblioteca_exercicios')
+      .update(alteracoes)
+      .eq('id', id)
+      .select()
+      .single();
 }
 
 export async function removerExercicioBiblioteca(id) {

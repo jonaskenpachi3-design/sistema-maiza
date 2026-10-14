@@ -35,8 +35,11 @@ function renderPasso() {
     const t = exercicios[indice];
     document.getElementById('tw-progresso').textContent = `Exercício ${indice + 1} de ${exercicios.length}`;
     document.getElementById('tw-nome').textContent = t.exercicio;
-    document.getElementById('tw-detalhes').textContent =
-        `${t.series || '-'} x ${t.reps || '-'}${t.carga ? ' · ' + t.carga : ''}`;
+    document.getElementById('tw-detalhes').textContent = [
+        t.series ? `${t.series} séries` : '',
+        t.reps ? `${t.reps} repetições` : '',
+        t.carga || '',
+    ].filter(Boolean).join(' · ');
     document.getElementById('tw-como').textContent = t.como_executar || '';
 
     const imagem = document.getElementById('tw-imagem');
@@ -55,6 +58,30 @@ function renderPasso() {
     const atribuicao = document.getElementById('tw-atribuicao');
     atribuicao.textContent = t.atribuicao || '';
     atribuicao.hidden = !t.atribuicao;
+
+    const fonte = document.getElementById('tw-fonte');
+    const fonteUrl = urlHttp(t.fonte);
+    fonte.hidden = !fonteUrl;
+    if (fonteUrl) fonte.href = fonteUrl;
+    else fonte.removeAttribute('href');
+
+    const licenca = document.getElementById('tw-licenca');
+    const licencaUrl = urlHttp(t.licenca_url);
+    licenca.hidden = !licencaUrl;
+    if (licencaUrl) licenca.href = licencaUrl;
+    else licenca.removeAttribute('href');
+
+    const fonteTexto = document.getElementById('tw-fonte-texto');
+    const fonteTextoUrl = urlHttp(t.fonte_texto);
+    fonteTexto.hidden = !fonteTextoUrl;
+    if (fonteTextoUrl) fonteTexto.href = fonteTextoUrl;
+    else fonteTexto.removeAttribute('href');
+
+    const licencaTexto = document.getElementById('tw-licenca-texto');
+    const licencaTextoUrl = urlHttp(t.licenca_texto_url);
+    licencaTexto.hidden = !licencaTextoUrl;
+    if (licencaTextoUrl) licencaTexto.href = licencaTextoUrl;
+    else licencaTexto.removeAttribute('href');
 
     clearInterval(intervalo);
     rodando = false;

@@ -3323,6 +3323,47 @@ textarea::placeholder {
   gap: 9px;
 }
 
+.admin-painel .treino-fonte-nota {
+  margin: -6px 0 14px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.admin-painel .treino-abas {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.admin-painel .treino-aba {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--raio-campo);
+  background: #fff;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.admin-painel .treino-aba.ativo {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent-dim);
+}
+
+.admin-painel #form-treino [hidden] {
+  display: none !important;
+}
+
+.admin-painel .treino-parametros {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
 .admin-painel .admin-biblioteca-links {
   margin-top: 10px;
 }
@@ -3473,6 +3514,14 @@ textarea::placeholder {
 
   .treino-biblioteca-opcao {
     min-height: 48px;
+  }
+
+  .admin-painel .treino-abas {
+    flex-direction: column;
+  }
+
+  .admin-painel .treino-parametros {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .treino-biblioteca-preview img {

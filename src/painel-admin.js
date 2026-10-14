@@ -20,7 +20,9 @@ import {
   responderEnvio,
   vincularAlunoPorEmail,
   listarBiblioteca,
+  buscarExercicioBibliotecaPorIdExterno,
   criarExercicioBiblioteca,
+  atualizarImagemExercicioBiblioteca,
   removerExercicioBiblioteca,
   listarPlanos,
   criarPlano,
@@ -504,6 +506,10 @@ function desenharListaAlunos(alunos) {
 
 async function renderDetalheAluno(aluno) {
   if (!aluno) return;
+  const { EXERCISES_DATASET_LICENSE, EXERCISES_DATASET_SOURCE, pesquisarExercicios } =
+      await import('./exercises-dataset.js');
+  const { WGER_SOURCE, pesquisarImagensLicenciadas } =
+      await import('./wger-media.js');
 
   containerGlobal.innerHTML = `
     <div class="secao admin-painel">
@@ -634,49 +640,98 @@ async function renderDetalheAluno(aluno) {
         </div>
 
         <form id="form-treino" class="caixa-form admin-form">
-          <h3>Adicionar exercício</h3>
+          <h3>Pesquisar e adicionar exercício</h3>
+          <p class="treino-fonte-nota">
+            Catálogo de nomes e instruções em inglês: Exercises Library, licença MIT.
+            Associa um GIF/imagem próprio ou licenciado; será guardado para reutilização.
+            <a href="${EXERCISES_DATASET_SOURCE}" target="_blank" rel="noopener noreferrer">Ver fonte</a>
+            · <a href="${EXERCISES_DATASET_LICENSE}" target="_blank" rel="noopener noreferrer">Ver licença do texto</a>
+          </p>
 
-          <label for="tr-busca-biblioteca">Pesquisar na biblioteca</label>
-          <input
-            type="search"
-            id="tr-busca-biblioteca"
-            placeholder="Nome, grupo muscular ou equipamento..."
-            autocomplete="off"
-          />
-          <div id="tr-biblioteca-resultados" class="treino-biblioteca-resultados" aria-live="polite"></div>
+          <div class="treino-abas" role="tablist" aria-label="Catálogos de exercícios">
+            <button type="button" id="tr-tab-aberto" class="treino-aba ativo" role="tab" aria-selected="true">
+              <i class="fa-solid fa-magnifying-glass"></i> Pesquisar catálogo
+            </button>
+            <button type="button" id="tr-tab-proprio" class="treino-aba" role="tab" aria-selected="false">
+              <i class="fa-solid fa-photo-film"></i> Meus exercícios e GIFs
+            </button>
+            <button type="button" id="tr-tab-imagens" class="treino-aba" role="tab" aria-selected="false">
+              <i class="fa-regular fa-image"></i> Imagens licenciadas
+            </button>
+          </div>
+
+          <div id="tr-painel-aberto" role="tabpanel">
+            <label for="tr-busca-aberto">Pesquisar por nome, músculo ou equipamento</label>
+            <input
+              type="search"
+              id="tr-busca-aberto"
+              placeholder="Ex.: agachamento, chest, dumbbell..."
+              autocomplete="off"
+            />
+            <div id="tr-resultados-aberto" class="treino-biblioteca-resultados" aria-live="polite"></div>
+          </div>
+
+          <div id="tr-painel-proprio" role="tabpanel" hidden>
+            <label for="tr-busca-proprio">Pesquisar exercícios com mídia guardada</label>
+            <input
+              type="search"
+              id="tr-busca-proprio"
+              placeholder="Nome, músculo ou equipamento..."
+              autocomplete="off"
+            />
+            <div id="tr-resultados-proprios" class="treino-biblioteca-resultados" aria-live="polite"></div>
+          </div>
+
+          <div id="tr-painel-imagens" role="tabpanel" hidden>
+            <p class="treino-fonte-nota">
+              189 exercícios com imagem CC BY-SA, permitida em uso comercial com atribuição.
+              <a href="${WGER_SOURCE}" target="_blank" rel="noopener noreferrer">Fonte e condições</a>.
+              Não há GIFs animados nesse catálogo.
+            </p>
+            <label for="tr-busca-imagens">Pesquisar imagem por nome, grupo ou equipamento</label>
+            <input
+              type="search"
+              id="tr-busca-imagens"
+              placeholder="Ex.: bench press, squat, dumbbell..."
+              autocomplete="off"
+            />
+            <div id="tr-resultados-imagens" class="treino-biblioteca-resultados" aria-live="polite"></div>
+          </div>
+
           <div id="tr-biblioteca-preview" class="treino-biblioteca-preview" aria-live="polite"></div>
-          <input type="hidden" id="tr-biblioteca-id" />
           <input type="hidden" id="tr-imagem-url" />
-          <input type="hidden" id="tr-video" />
-          <input type="hidden" id="tr-atribuicao" />
 
-          <label for="tr-exercicio">Exercício</label>
-          <input type="text" id="tr-exercicio" required />
-
-          <label for="tr-como">Instruções</label>
-          <textarea id="tr-como" placeholder="Como executar o exercício..."></textarea>
-
-          <div class="admin-grid-form admin-grid-tres">
-            <div>
-              <label for="tr-series">Séries</label>
-              <input type="text" id="tr-series" placeholder="4" />
-            </div>
-
+          <div class="admin-grid-form admin-grid-tres treino-parametros">
             <div>
               <label for="tr-reps">Repetições</label>
-              <input type="text" id="tr-reps" placeholder="12" />
+              <input type="text" id="tr-reps" required placeholder="Ex.: 12" />
             </div>
-
             <div>
-              <label for="tr-descanso">Descanso</label>
-              <input type="text" id="tr-descanso" placeholder="60 s" />
-            </div>
-
-            <div>
-              <label for="tr-carga">Carga</label>
-              <input type="text" id="tr-carga" placeholder="20 kg" />
+              <label for="tr-descanso">Descanso entre séries (segundos)</label>
+              <input type="number" id="tr-descanso" min="0" step="5" required value="60" />
             </div>
           </div>
+
+          <div id="tr-media-campos" hidden>
+            <label for="tr-imagem-arquivo">GIF ou imagem própria/licenciada</label>
+            <input type="file" id="tr-imagem-arquivo" accept="image/*,.gif" />
+
+            <label for="tr-imagem-url-input">Ou URL da imagem/GIF licenciado</label>
+            <input type="url" id="tr-imagem-url-input" placeholder="https://..." />
+
+            <label for="tr-media-fonte">Fonte/licença ou crédito da mídia</label>
+            <input type="url" id="tr-media-fonte" placeholder="https://..." />
+            <label for="tr-media-licenca">Link da licença da mídia</label>
+            <input type="url" id="tr-media-licenca" placeholder="https://creativecommons.org/licenses/..." />
+            <label for="tr-media-atribuicao">Atribuição exigida (se aplicável)</label>
+            <input type="text" id="tr-media-atribuicao" placeholder="Ex.: © titular dos direitos" />
+          </div>
+
+          <button type="button" id="tr-alterar-media" class="secundario" hidden>
+            <i class="fa-solid fa-image"></i> Usar outra imagem/GIF
+          </button>
+
+          <p id="tr-selecao-erro" class="erro" role="alert"></p>
 
           <button type="submit" class="admin-btn-principal">
             <i class="fa-solid fa-plus"></i>
@@ -923,82 +978,248 @@ async function renderDetalheAluno(aluno) {
         }
       });
 
-  const campoBuscaBibliotecaTreino = document.getElementById('tr-busca-biblioteca');
-  const resultadosBibliotecaTreino = document.getElementById('tr-biblioteca-resultados');
+  const campoBuscaCatalogoAberto = document.getElementById('tr-busca-aberto');
+  const campoBuscaCatalogoProprio = document.getElementById('tr-busca-proprio');
+  const campoBuscaImagensLicenciadas = document.getElementById('tr-busca-imagens');
+  const resultadosCatalogoAberto = document.getElementById('tr-resultados-aberto');
+  const resultadosCatalogoProprio = document.getElementById('tr-resultados-proprios');
+  const resultadosImagensLicenciadas = document.getElementById('tr-resultados-imagens');
   const previewBibliotecaTreino = document.getElementById('tr-biblioteca-preview');
-  const campoExercicioTreino = document.getElementById('tr-exercicio');
+  const camposMidiaTreino = document.getElementById('tr-media-campos');
+  const inputArquivoTreino = document.getElementById('tr-imagem-arquivo');
+  const inputUrlMidiaTreino = document.getElementById('tr-imagem-url-input');
+  const inputFonteMidiaTreino = document.getElementById('tr-media-fonte');
+  const inputLicencaMidiaTreino = document.getElementById('tr-media-licenca');
+  const inputAtribuicaoMidiaTreino = document.getElementById('tr-media-atribuicao');
+  const botaoAlterarMidiaTreino = document.getElementById('tr-alterar-media');
+  const mensagemSelecaoTreino = document.getElementById('tr-selecao-erro');
+  let exercicioSelecionado = null;
+  let urlPreviewLocal = null;
+  let sequenciaPesquisaCatalogo = 0;
+  let substituindoMidiaTreino = false;
 
-  function renderResultadosBibliotecaTreino(termo = '') {
+  function mostrarPreviewTreino(nome, instrucoes, imagemUrl) {
+    if (urlPreviewLocal) {
+      URL.revokeObjectURL(urlPreviewLocal);
+      urlPreviewLocal = null;
+    }
+
+    const arquivo = inputArquivoTreino.files[0];
+    if (arquivo) urlPreviewLocal = URL.createObjectURL(arquivo);
+
+    const imagem = urlPreviewLocal || urlHttp(imagemUrl);
+    previewBibliotecaTreino.innerHTML = `
+      ${imagem ? `<img src="${escapar(imagem)}" alt="Pré-visualização de ${escapar(nome)}" />` : ''}
+      <div>
+        <strong>${escapar(nome)}</strong>
+        <span>${escapar(instrucoes || 'Sem instruções textuais no catálogo.')}</span>
+        ${!imagem ? '<span>Adiciona um GIF/imagem próprio ou licenciado para mostrar a demonstração ao aluno.</span>' : ''}
+      </div>
+    `;
+  }
+
+  function selecionarExercicioCatalogo(exercicio, registroBiblioteca = null) {
+    exercicioSelecionado = { ...exercicio, registroBiblioteca };
+    substituindoMidiaTreino = false;
+    const imagemDisponivel = registroBiblioteca?.imagem_url || exercicio.imagemUrl || '';
+    const media = exercicio.media || null;
+    document.getElementById('tr-imagem-url').value = imagemDisponivel;
+    inputUrlMidiaTreino.value = '';
+    inputArquivoTreino.value = '';
+    inputFonteMidiaTreino.value = registroBiblioteca?.fonte || media?.sourceUrl || '';
+    inputLicencaMidiaTreino.value = registroBiblioteca?.licenca_url || media?.licenseUrl || '';
+    inputAtribuicaoMidiaTreino.value = registroBiblioteca?.atribuicao ||
+      (media ? `Imagem: ${media.imageAuthor}. Exercício: ${media.textAuthor}.` : '');
+    camposMidiaTreino.hidden = Boolean(imagemDisponivel);
+    botaoAlterarMidiaTreino.hidden = !imagemDisponivel;
+    mensagemSelecaoTreino.textContent = '';
+    mostrarPreviewTreino(
+      exercicio.nome,
+      exercicio.instrucoes || registroBiblioteca?.como_executar,
+      imagemDisponivel
+    );
+  }
+
+  async function renderResultadosCatalogoAberto(termo) {
+    const sequencia = ++sequenciaPesquisaCatalogo;
+    const busca = termo.trim();
+    if (!busca) {
+      resultadosCatalogoAberto.innerHTML = '<p class="vazio">Escreve para pesquisar entre 1.324 exercícios.</p>';
+      return;
+    }
+
+    resultadosCatalogoAberto.innerHTML = '<p class="vazio"><i class="fa-solid fa-spinner fa-spin"></i> A pesquisar...</p>';
+
+    try {
+      const encontrados = await pesquisarExercicios(busca);
+      if (sequencia !== sequenciaPesquisaCatalogo) return;
+
+      resultadosCatalogoAberto.innerHTML = encontrados.length
+          ? encontrados.map(exercicio => {
+            const registro = bibliotecaCache.find(item => item.id_externo === exercicio.id);
+            return `
+              <button type="button" class="treino-biblioteca-opcao" data-id="${escapar(exercicio.id)}">
+                ${urlHttp(registro?.imagem_url) ? `<img src="${escapar(urlHttp(registro.imagem_url))}" alt="" loading="lazy" />` : ''}
+                <span class="treino-biblioteca-opcao-texto">
+                  <strong>${escapar(exercicio.name)}</strong>
+                  <span>${escapar([exercicio.target || exercicio.bodyPart, exercicio.equipment].filter(Boolean).join(' · '))}</span>
+                  <span>${registro?.imagem_url ? 'GIF/imagem guardado' : 'Demonstração própria/licenciada necessária'}</span>
+                </span>
+              </button>
+            `;
+          }).join('')
+          : '<p class="vazio">Nenhum exercício encontrado.</p>';
+
+      resultadosCatalogoAberto.querySelectorAll('.treino-biblioteca-opcao').forEach(botao => {
+        botao.addEventListener('click', () => {
+          const item = encontrados.find(exercicio => String(exercicio.id) === botao.dataset.id);
+          if (!item) return;
+          const registro = bibliotecaCache.find(exercicio => exercicio.id_externo === item.id);
+          selecionarExercicioCatalogo({
+            idExterno: item.id,
+            nome: item.name,
+            grupo: item.target || item.bodyPart || item.muscleGroup,
+            equipamento: item.equipment,
+            instrucoes: item.instructions,
+            fonteTexto: EXERCISES_DATASET_SOURCE,
+            licencaTextoUrl: EXERCISES_DATASET_LICENSE,
+          }, registro);
+        });
+      });
+    } catch (erro) {
+      if (sequencia === sequenciaPesquisaCatalogo) {
+        resultadosCatalogoAberto.innerHTML = `<p class="erro">Não foi possível carregar o catálogo: ${escapar(erro.message)}</p>`;
+      }
+    }
+  }
+
+  function renderResultadosCatalogoProprio(termo = '') {
     const busca = termo.trim().toLocaleLowerCase('pt-BR');
     const encontrados = bibliotecaCache.filter(exercicio =>
       [exercicio.nome, exercicio.grupo, exercicio.equipamento]
           .some(valor => String(valor || '').toLocaleLowerCase('pt-BR').includes(busca))
-    ).slice(0, 8);
+    ).slice(0, 24);
 
-    resultadosBibliotecaTreino.innerHTML = encontrados.length
+    resultadosCatalogoProprio.innerHTML = encontrados.length
         ? encontrados.map(exercicio => `
           <button type="button" class="treino-biblioteca-opcao" data-id="${escapar(exercicio.id)}">
-            ${urlHttp(exercicio.imagem_url) ? `
-              <img src="${escapar(urlHttp(exercicio.imagem_url))}" alt="" loading="lazy" />
-            ` : ''}
+            ${urlHttp(exercicio.imagem_url) ? `<img src="${escapar(urlHttp(exercicio.imagem_url))}" alt="" loading="lazy" />` : ''}
             <span class="treino-biblioteca-opcao-texto">
               <strong>${escapar(exercicio.nome)}</strong>
               <span>${escapar([exercicio.grupo, exercicio.equipamento].filter(Boolean).join(' · ') || 'Sem categoria')}</span>
             </span>
           </button>
         `).join('')
-        : `<p class="vazio">${busca ? 'Nenhum exercício encontrado.' : 'A biblioteca está vazia; também pode cadastrar o exercício manualmente.'}</p>`;
+        : `<p class="vazio">${busca ? 'Nenhum exercício encontrado.' : 'Ainda não há exercícios com mídia guardada.'}</p>`;
 
-    resultadosBibliotecaTreino.querySelectorAll('.treino-biblioteca-opcao').forEach(botao => {
+    resultadosCatalogoProprio.querySelectorAll('.treino-biblioteca-opcao').forEach(botao => {
       botao.addEventListener('click', () => {
-        const exercicio = bibliotecaCache.find(item => String(item.id) === botao.dataset.id);
-        if (!exercicio) return;
-
-        campoExercicioTreino.value = exercicio.nome;
-        document.getElementById('tr-biblioteca-id').value = exercicio.id;
-        document.getElementById('tr-como').value = exercicio.como_executar || '';
-        document.getElementById('tr-imagem-url').value = exercicio.imagem_url || '';
-        document.getElementById('tr-video').value = exercicio.video || '';
-        document.getElementById('tr-atribuicao').value = exercicio.atribuicao || '';
-        previewBibliotecaTreino.innerHTML = `
-          ${urlHttp(exercicio.imagem_url) ? `
-            <img src="${escapar(urlHttp(exercicio.imagem_url))}" alt="Pré-visualização de ${escapar(exercicio.nome)}" />
-          ` : ''}
-          <div>
-            <strong>${escapar(exercicio.nome)}</strong>
-            <span>${escapar(exercicio.como_executar || 'Sem instruções na biblioteca.')}</span>
-          </div>
-        `;
-        resultadosBibliotecaTreino.innerHTML = `<p class="admin-mensagem-sucesso"><i class="fa-solid fa-circle-check"></i> ${escapar(exercicio.nome)} selecionado.</p>`;
+        const registro = bibliotecaCache.find(item => String(item.id) === botao.dataset.id);
+        if (!registro) return;
+        selecionarExercicioCatalogo({
+          idExterno: registro.id_externo || '',
+          nome: registro.nome,
+          grupo: registro.grupo,
+          equipamento: registro.equipamento,
+          instrucoes: registro.como_executar,
+        }, registro);
       });
     });
   }
 
-  campoBuscaBibliotecaTreino.addEventListener('input', () => {
-    renderResultadosBibliotecaTreino(campoBuscaBibliotecaTreino.value);
-  });
+  function renderResultadosImagens(termo = '') {
+    const encontrados = pesquisarImagensLicenciadas(termo);
+    resultadosImagensLicenciadas.innerHTML = encontrados.length
+        ? encontrados.map(exercicio => {
+          const registro = bibliotecaCache.find(item => item.id_externo === exercicio.id);
+          return `
+            <button type="button" class="treino-biblioteca-opcao" data-id="${escapar(exercicio.id)}">
+              <img src="${escapar(urlHttp(registro?.imagem_url) || exercicio.imageUrl)}" alt="" loading="lazy" />
+              <span class="treino-biblioteca-opcao-texto">
+                <strong>${escapar(exercicio.name)}</strong>
+                <span>${escapar([exercicio.category, exercicio.equipment].filter(Boolean).join(' · '))}</span>
+                <span>Imagem: ${escapar(exercicio.imageLicense)} · ${escapar(exercicio.imageAuthor)}</span>
+                <span>Texto: ${escapar(exercicio.textLicense)} · ${escapar(exercicio.textAuthor)}</span>
+              </span>
+            </button>
+          `;
+        }).join('')
+        : `<p class="vazio">${termo.trim() ? 'Nenhuma imagem licenciada encontrada.' : 'Escreve para pesquisar imagens disponíveis.'}</p>`;
 
-  campoExercicioTreino.addEventListener('input', () => {
-    const selecionado = bibliotecaCache.find(item => String(item.id) === document.getElementById('tr-biblioteca-id').value);
-    if (selecionado && selecionado.nome !== campoExercicioTreino.value.trim()) {
-      document.getElementById('tr-biblioteca-id').value = '';
-      document.getElementById('tr-imagem-url').value = '';
-      document.getElementById('tr-video').value = '';
-      document.getElementById('tr-atribuicao').value = '';
-      previewBibliotecaTreino.innerHTML = '';
+    resultadosImagensLicenciadas.querySelectorAll('.treino-biblioteca-opcao').forEach(botao => {
+      botao.addEventListener('click', () => {
+        const item = encontrados.find(exercicio => exercicio.id === botao.dataset.id);
+        if (!item) return;
+        const registro = bibliotecaCache.find(exercicio => exercicio.id_externo === item.id);
+        const exercicio = {
+          idExterno: item.id,
+          nome: item.name,
+          grupo: item.category,
+          equipamento: item.equipment,
+          instrucoes: item.description,
+          imagemUrl: item.imageUrl,
+          media: {
+            sourceUrl: item.imageSourcePage,
+            licenseUrl: item.imageLicenseUrl,
+            imageAuthor: item.imageAuthor,
+            textAuthor: item.textAuthor,
+            textSourceUrl: item.sourceUrl,
+            textLicenseUrl: item.textLicenseUrl,
+          },
+        };
+
+        selecionarExercicioCatalogo(exercicio, registro);
+      });
+    });
+  }
+
+  function trocarAbaTreino(aba) {
+    const abas = ['aberto', 'proprio', 'imagens'];
+    for (const nomeAba of abas) {
+      const ativa = nomeAba === aba;
+      document.getElementById(`tr-tab-${nomeAba}`).classList.toggle('ativo', ativa);
+      document.getElementById(`tr-tab-${nomeAba}`).setAttribute('aria-selected', String(ativa));
+      document.getElementById(`tr-painel-${nomeAba}`).hidden = !ativa;
     }
+  }
+
+  document.getElementById('tr-tab-aberto').addEventListener('click', () => trocarAbaTreino('aberto'));
+  document.getElementById('tr-tab-proprio').addEventListener('click', () => trocarAbaTreino('proprio'));
+  document.getElementById('tr-tab-imagens').addEventListener('click', () => trocarAbaTreino('imagens'));
+  campoBuscaCatalogoAberto.addEventListener('input', () => renderResultadosCatalogoAberto(campoBuscaCatalogoAberto.value));
+  campoBuscaCatalogoProprio.addEventListener('input', () => renderResultadosCatalogoProprio(campoBuscaCatalogoProprio.value));
+  campoBuscaImagensLicenciadas.addEventListener('input', () => renderResultadosImagens(campoBuscaImagensLicenciadas.value));
+  botaoAlterarMidiaTreino.addEventListener('click', () => {
+    substituindoMidiaTreino = true;
+    camposMidiaTreino.hidden = false;
+    botaoAlterarMidiaTreino.hidden = true;
+    inputUrlMidiaTreino.value = '';
+    inputFonteMidiaTreino.value = '';
+    inputLicencaMidiaTreino.value = '';
+    inputAtribuicaoMidiaTreino.value = '';
+    inputUrlMidiaTreino.focus();
+  });
+  inputArquivoTreino.addEventListener('change', () => {
+    if (!exercicioSelecionado) return;
+    camposMidiaTreino.hidden = false;
+    mostrarPreviewTreino(exercicioSelecionado.nome, exercicioSelecionado.instrucoes, inputUrlMidiaTreino.value || document.getElementById('tr-imagem-url').value);
+  });
+  inputUrlMidiaTreino.addEventListener('input', () => {
+    if (!exercicioSelecionado) return;
+    camposMidiaTreino.hidden = false;
+    mostrarPreviewTreino(exercicioSelecionado.nome, exercicioSelecionado.instrucoes, inputUrlMidiaTreino.value);
   });
 
   try {
     const { data, error } = await listarBiblioteca();
     if (error) {
-      resultadosBibliotecaTreino.innerHTML = `<p class="erro">Não foi possível carregar a biblioteca: ${escapar(error.message)}</p>`;
+      resultadosCatalogoProprio.innerHTML = `<p class="erro">Não foi possível carregar os exercícios guardados: ${escapar(error.message)}</p>`;
     } else {
       bibliotecaCache = data || [];
-      renderResultadosBibliotecaTreino();
+      renderResultadosCatalogoProprio();
     }
   } catch (erro) {
-    resultadosBibliotecaTreino.innerHTML = `<p class="erro">Não foi possível carregar a biblioteca: ${escapar(erro.message)}</p>`;
+    resultadosCatalogoProprio.innerHTML = `<p class="erro">Não foi possível carregar os exercícios guardados: ${escapar(erro.message)}</p>`;
   }
 
   document.getElementById('form-treino')
@@ -1007,22 +1228,128 @@ async function renderDetalheAluno(aluno) {
 
         const formulario = evento.currentTarget;
         const botao = formulario.querySelector('button[type="submit"]');
+        const reps = document.getElementById('tr-reps').value.trim();
+        const descanso = document.getElementById('tr-descanso').value.trim();
+        const imagemArquivo = inputArquivoTreino.files[0] || null;
+        const imagemUrlInformada = camposMidiaTreino.hidden
+            ? ''
+            : inputUrlMidiaTreino.value.trim();
+        const imagemUrlValida = imagemUrlInformada ? urlHttp(imagemUrlInformada) : '';
+        const imagemPadrao = exercicioSelecionado?.registroBiblioteca?.imagem_url ||
+            exercicioSelecionado?.imagemUrl || '';
+        const fonteImagem = inputFonteMidiaTreino.value.trim() ||
+            (!substituindoMidiaTreino ? exercicioSelecionado?.media?.sourceUrl : '') || '';
+        const licencaImagem = inputLicencaMidiaTreino.value.trim() ||
+            (!substituindoMidiaTreino ? exercicioSelecionado?.media?.licenseUrl : '') || '';
+        const atribuicaoImagem = inputAtribuicaoMidiaTreino.value.trim() ||
+            (exercicioSelecionado?.media
+              ? substituindoMidiaTreino
+                ? `Exercício: ${exercicioSelecionado.media.textAuthor}.`
+                : `Imagem: ${exercicioSelecionado.media.imageAuthor}. Exercício: ${exercicioSelecionado.media.textAuthor}.`
+              : '') || '';
+        const fonteTexto = exercicioSelecionado?.media?.textSourceUrl ||
+            exercicioSelecionado?.fonteTexto ||
+            exercicioSelecionado?.registroBiblioteca?.fonte_texto || '';
+        const licencaTexto = exercicioSelecionado?.media?.textLicenseUrl ||
+            exercicioSelecionado?.licencaTextoUrl ||
+            exercicioSelecionado?.registroBiblioteca?.licenca_texto_url || '';
+
+        mensagemSelecaoTreino.textContent = '';
+        if (!exercicioSelecionado) {
+          mensagemSelecaoTreino.textContent = 'Pesquisa e seleciona um exercício do catálogo antes de adicionar.';
+          return;
+        }
+        if (!reps || !descanso) {
+          mensagemSelecaoTreino.textContent = 'Preenche as repetições e o descanso entre séries.';
+          return;
+        }
+        if (imagemUrlInformada && !imagemUrlValida && !imagemArquivo) {
+          mensagemSelecaoTreino.textContent = 'O link da imagem/GIF deve começar por http:// ou https://.';
+          return;
+        }
+
+        if (imagemArquivo && !imagemArquivo.type.startsWith('image/')) {
+          mensagemSelecaoTreino.textContent = 'Seleciona um ficheiro de imagem ou GIF válido.';
+          return;
+        }
+        if (imagemArquivo && imagemArquivo.size > 50 * 1024 * 1024) {
+          mensagemSelecaoTreino.textContent = 'O ficheiro excede o limite de 50 MB do bucket biblioteca.';
+          return;
+        }
 
         botao.disabled = true;
 
         try {
+          let registroBiblioteca = exercicioSelecionado.registroBiblioteca;
+          if (!registroBiblioteca && exercicioSelecionado.idExterno) {
+            const resultadoExistente = await buscarExercicioBibliotecaPorIdExterno(exercicioSelecionado.idExterno);
+            if (resultadoExistente.error) throw resultadoExistente.error;
+            registroBiblioteca = resultadoExistente.data;
+          }
+
+          if (!registroBiblioteca) {
+            if (!imagemArquivo && !imagemUrlValida && !imagemPadrao) {
+              mensagemSelecaoTreino.textContent = 'Adiciona um GIF/imagem própria ou licenciada para guardar a demonstração do exercício.';
+              return;
+            }
+
+            const { data, error } = await criarExercicioBiblioteca({
+              idExterno: exercicioSelecionado.idExterno || null,
+              nome: exercicioSelecionado.nome,
+              grupo: exercicioSelecionado.grupo || '',
+              equipamento: exercicioSelecionado.equipamento || '',
+              comoExecutar: exercicioSelecionado.instrucoes || '',
+              imagemUrl: imagemUrlValida || imagemPadrao || null,
+              fonte: fonteImagem || null,
+              licencaUrl: licencaImagem || null,
+              atribuicao: atribuicaoImagem,
+              fonteTexto,
+              licencaTextoUrl: licencaTexto,
+              imagemArquivo,
+            });
+            if (error) throw error;
+            registroBiblioteca = data;
+            bibliotecaCache.push(registroBiblioteca);
+            exercicioSelecionado.registroBiblioteca = registroBiblioteca;
+          } else if (!registroBiblioteca.imagem_url || imagemArquivo || imagemUrlValida) {
+            if (!registroBiblioteca.imagem_url && !imagemArquivo && !imagemUrlValida && !imagemPadrao) {
+              mensagemSelecaoTreino.textContent = 'Adiciona um GIF/imagem própria ou licenciada para guardar a demonstração do exercício.';
+              return;
+            }
+
+            const { data, error } = await atualizarImagemExercicioBiblioteca(registroBiblioteca.id, {
+              imagemUrl: imagemUrlValida || imagemPadrao || null,
+              fonte: fonteImagem,
+              licencaUrl: licencaImagem,
+              atribuicao: atribuicaoImagem,
+              fonteTexto,
+              licencaTextoUrl: licencaTexto,
+              imagemArquivo,
+            });
+            if (error) throw error;
+            registroBiblioteca = data;
+            bibliotecaCache = bibliotecaCache.map(item =>
+              String(item.id) === String(data.id) ? data : item
+            );
+            exercicioSelecionado.registroBiblioteca = registroBiblioteca;
+          }
+
           const { error } = await adicionarTreino({
             aluno_id: aluno.id,
-            exercicio: document.getElementById('tr-exercicio').value.trim(),
-            series: document.getElementById('tr-series').value.trim(),
-            reps: document.getElementById('tr-reps').value.trim(),
-            descanso: document.getElementById('tr-descanso').value.trim(),
-            carga: document.getElementById('tr-carga').value.trim(),
-            como_executar: document.getElementById('tr-como').value.trim(),
-            biblioteca_exercicio_id: document.getElementById('tr-biblioteca-id').value || null,
-            imagem_url: document.getElementById('tr-imagem-url').value || null,
-            video: document.getElementById('tr-video').value || null,
-            atribuicao: document.getElementById('tr-atribuicao').value || null,
+            exercicio: exercicioSelecionado.nome,
+            series: '',
+            reps,
+            descanso,
+            carga: '',
+            como_executar: '',
+            biblioteca_exercicio_id: registroBiblioteca.id,
+            imagem_url: registroBiblioteca.imagem_url,
+            video: registroBiblioteca.video || null,
+            atribuicao: registroBiblioteca.atribuicao || null,
+            fonte: registroBiblioteca.fonte || null,
+            licenca_url: registroBiblioteca.licenca_url || null,
+            fonte_texto: registroBiblioteca.fonte_texto || null,
+            licenca_texto_url: registroBiblioteca.licenca_texto_url || null,
           });
 
           if (error) {
@@ -1031,11 +1358,23 @@ async function renderDetalheAluno(aluno) {
           }
 
           formulario.reset();
+          exercicioSelecionado = null;
+          substituindoMidiaTreino = false;
+          document.getElementById('tr-imagem-url').value = '';
+          if (urlPreviewLocal) {
+            URL.revokeObjectURL(urlPreviewLocal);
+            urlPreviewLocal = null;
+          }
           previewBibliotecaTreino.innerHTML = '';
-          resultadosBibliotecaTreino.innerHTML = '';
+          camposMidiaTreino.hidden = true;
+          renderResultadosCatalogoProprio(campoBuscaCatalogoProprio.value);
+          renderResultadosCatalogoAberto(campoBuscaCatalogoAberto.value);
           await carregarTreinos(aluno.id);
         } catch (erro) {
-          alert(erro.message || 'Erro ao adicionar exercício.');
+          const mensagem = erro?.message || 'Erro ao adicionar exercício.';
+          mensagemSelecaoTreino.textContent = mensagem.includes('id_externo')
+              ? 'Executa a migração supabase/migrations/20261013_exercise_dataset_ids.sql no Supabase e tenta novamente.'
+              : mensagem;
         } finally {
           botao.disabled = false;
         }
@@ -1189,12 +1528,11 @@ async function carregarTreinos(alunoId) {
         <div class="info-aluno">
           <strong>${escapar(treino.exercicio)}</strong>
           <span>
-            ${escapar(treino.series || '-')} séries ×
+            ${treino.series ? `${escapar(treino.series)} séries × ` : ''}
             ${escapar(treino.reps || '-')} repetições
-            ${treino.descanso ? ` · Descanso: ${escapar(treino.descanso)}` : ''}
+            ${treino.descanso ? ` · Descanso entre séries: ${escapar(treino.descanso)} s` : ''}
             ${treino.carga ? ` · ${escapar(treino.carga)}` : ''}
           </span>
-          ${treino.como_executar ? `<span>${escapar(treino.como_executar)}</span>` : ''}
         </div>
         ${botaoRemover(treino.id, 'Remover exercício')}
       </div>
@@ -1650,10 +1988,26 @@ function renderListaBiblioteca(termo = '') {
           ` : ''}
           ${urlHttp(exercicio.fonte) ? `
             <a href="${escapar(urlHttp(exercicio.fonte))}" target="_blank" rel="noopener noreferrer" class="admin-link">
-              <i class="fa-solid fa-arrow-up-right-from-square"></i> Fonte / licença
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Fonte da imagem
+            </a>
+          ` : ''}
+          ${urlHttp(exercicio.licenca_url) ? `
+            <a href="${escapar(urlHttp(exercicio.licenca_url))}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-regular fa-copyright"></i> Licença
+            </a>
+          ` : ''}
+          ${urlHttp(exercicio.fonte_texto) ? `
+            <a href="${escapar(urlHttp(exercicio.fonte_texto))}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-solid fa-book"></i> Fonte do exercício
+            </a>
+          ` : ''}
+          ${urlHttp(exercicio.licenca_texto_url) ? `
+            <a href="${escapar(urlHttp(exercicio.licenca_texto_url))}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-regular fa-copyright"></i> Licença do texto
             </a>
           ` : ''}
         </div>
+        ${exercicio.atribuicao ? `<small class="biblioteca-atribuicao">${escapar(exercicio.atribuicao)}</small>` : ''}
       </div>
 
       ${botaoRemover(exercicio.id, 'Remover exercício da biblioteca')}
