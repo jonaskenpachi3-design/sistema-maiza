@@ -221,6 +221,15 @@ export async function montarPainelAluno(container) {
                         ${String(indice + 1).padStart(2, '0')}
                       </span>
 
+                      ${urlHttp(treino.imagem_url) ? `
+                        <img
+                          class="aluno-imagem-exercicio"
+                          src="${escapar(urlHttp(treino.imagem_url))}"
+                          alt="Demonstração de ${escapar(treino.exercicio)}"
+                          loading="lazy"
+                        />
+                      ` : ''}
+
                       <div class="info-aluno">
 
                         <strong>
@@ -238,6 +247,17 @@ export async function montarPainelAluno(container) {
                             <i class="fa-solid fa-hashtag"></i>
                             ${escapar(treino.reps || '-')} repetições
                           </span>
+
+                          ${
+                    treino.descanso
+                        ? `
+                                <span>
+                                  <i class="fa-regular fa-clock"></i>
+                                  ${escapar(treino.descanso)} descanso
+                                </span>
+                              `
+                        : ''
+                }
 
                           ${
                     treino.carga
@@ -261,6 +281,15 @@ export async function montarPainelAluno(container) {
                             `
                         : ''
                 }
+
+                        ${urlHttp(treino.video) ? `
+                          <a href="${escapar(urlHttp(treino.video))}" target="_blank" rel="noopener noreferrer" class="admin-link aluno-link-demonstracao">
+                            <i class="fa-solid fa-circle-play"></i>
+                            Ver demonstração
+                          </a>
+                        ` : ''}
+
+                        ${treino.atribuicao ? `<small class="biblioteca-atribuicao">${escapar(treino.atribuicao)}</small>` : ''}
 
                       </div>
                     </article>
@@ -831,4 +860,13 @@ function escapar(texto) {
         '"': '&quot;',
         "'": '&#39;',
     })[caractere]);
+}
+
+function urlHttp(texto) {
+    try {
+        const url = new URL(texto);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch {
+        return '';
+    }
 }

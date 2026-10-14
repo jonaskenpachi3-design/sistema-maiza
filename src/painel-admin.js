@@ -29,6 +29,7 @@ import {
 
 let containerGlobal = null;
 let todosAlunosCache = [];
+let bibliotecaCache = [];
 
 const icones = {
   alunos: 'fa-user-group',
@@ -65,6 +66,15 @@ function escapar(texto) {
     '"': '&quot;',
     "'": '&#39;',
   })[caractere]);
+}
+
+function urlHttp(texto) {
+  try {
+    const url = new URL(texto);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch {
+    return '';
+  }
 }
 
 function formatarData(data) {
@@ -438,6 +448,7 @@ function desenharListaAlunos(alunos) {
             </span>
           ` : ''}
         </div>
+        ${exercicio.atribuicao ? `<small class="biblioteca-atribuicao">${escapar(exercicio.atribuicao)}</small>` : ''}
       </div>
     </div>
   `).join('');
@@ -625,8 +636,25 @@ async function renderDetalheAluno(aluno) {
         <form id="form-treino" class="caixa-form admin-form">
           <h3>Adicionar exercício</h3>
 
+          <label for="tr-busca-biblioteca">Pesquisar na biblioteca</label>
+          <input
+            type="search"
+            id="tr-busca-biblioteca"
+            placeholder="Nome, grupo muscular ou equipamento..."
+            autocomplete="off"
+          />
+          <div id="tr-biblioteca-resultados" class="treino-biblioteca-resultados" aria-live="polite"></div>
+          <div id="tr-biblioteca-preview" class="treino-biblioteca-preview" aria-live="polite"></div>
+          <input type="hidden" id="tr-biblioteca-id" />
+          <input type="hidden" id="tr-imagem-url" />
+          <input type="hidden" id="tr-video" />
+          <input type="hidden" id="tr-atribuicao" />
+
           <label for="tr-exercicio">Exercício</label>
           <input type="text" id="tr-exercicio" required />
+
+          <label for="tr-como">Instruções</label>
+          <textarea id="tr-como" placeholder="Como executar o exercício..."></textarea>
 
           <div class="admin-grid-form admin-grid-tres">
             <div>
@@ -637,6 +665,11 @@ async function renderDetalheAluno(aluno) {
             <div>
               <label for="tr-reps">Repetições</label>
               <input type="text" id="tr-reps" placeholder="12" />
+            </div>
+
+            <div>
+              <label for="tr-descanso">Descanso</label>
+              <input type="text" id="tr-descanso" placeholder="60 s" />
             </div>
 
             <div>
@@ -890,6 +923,84 @@ async function renderDetalheAluno(aluno) {
         }
       });
 
+  const campoBuscaBibliotecaTreino = document.getElementById('tr-busca-biblioteca');
+  const resultadosBibliotecaTreino = document.getElementById('tr-biblioteca-resultados');
+  const previewBibliotecaTreino = document.getElementById('tr-biblioteca-preview');
+  const campoExercicioTreino = document.getElementById('tr-exercicio');
+
+  function renderResultadosBibliotecaTreino(termo = '') {
+    const busca = termo.trim().toLocaleLowerCase('pt-BR');
+    const encontrados = bibliotecaCache.filter(exercicio =>
+      [exercicio.nome, exercicio.grupo, exercicio.equipamento]
+          .some(valor => String(valor || '').toLocaleLowerCase('pt-BR').includes(busca))
+    ).slice(0, 8);
+
+    resultadosBibliotecaTreino.innerHTML = encontrados.length
+        ? encontrados.map(exercicio => `
+          <button type="button" class="treino-biblioteca-opcao" data-id="${escapar(exercicio.id)}">
+            ${urlHttp(exercicio.imagem_url) ? `
+              <img src="${escapar(urlHttp(exercicio.imagem_url))}" alt="" loading="lazy" />
+            ` : ''}
+            <span class="treino-biblioteca-opcao-texto">
+              <strong>${escapar(exercicio.nome)}</strong>
+              <span>${escapar([exercicio.grupo, exercicio.equipamento].filter(Boolean).join(' · ') || 'Sem categoria')}</span>
+            </span>
+          </button>
+        `).join('')
+        : `<p class="vazio">${busca ? 'Nenhum exercício encontrado.' : 'A biblioteca está vazia; também pode cadastrar o exercício manualmente.'}</p>`;
+
+    resultadosBibliotecaTreino.querySelectorAll('.treino-biblioteca-opcao').forEach(botao => {
+      botao.addEventListener('click', () => {
+        const exercicio = bibliotecaCache.find(item => String(item.id) === botao.dataset.id);
+        if (!exercicio) return;
+
+        campoExercicioTreino.value = exercicio.nome;
+        document.getElementById('tr-biblioteca-id').value = exercicio.id;
+        document.getElementById('tr-como').value = exercicio.como_executar || '';
+        document.getElementById('tr-imagem-url').value = exercicio.imagem_url || '';
+        document.getElementById('tr-video').value = exercicio.video || '';
+        document.getElementById('tr-atribuicao').value = exercicio.atribuicao || '';
+        previewBibliotecaTreino.innerHTML = `
+          ${urlHttp(exercicio.imagem_url) ? `
+            <img src="${escapar(urlHttp(exercicio.imagem_url))}" alt="Pré-visualização de ${escapar(exercicio.nome)}" />
+          ` : ''}
+          <div>
+            <strong>${escapar(exercicio.nome)}</strong>
+            <span>${escapar(exercicio.como_executar || 'Sem instruções na biblioteca.')}</span>
+          </div>
+        `;
+        resultadosBibliotecaTreino.innerHTML = `<p class="admin-mensagem-sucesso"><i class="fa-solid fa-circle-check"></i> ${escapar(exercicio.nome)} selecionado.</p>`;
+      });
+    });
+  }
+
+  campoBuscaBibliotecaTreino.addEventListener('input', () => {
+    renderResultadosBibliotecaTreino(campoBuscaBibliotecaTreino.value);
+  });
+
+  campoExercicioTreino.addEventListener('input', () => {
+    const selecionado = bibliotecaCache.find(item => String(item.id) === document.getElementById('tr-biblioteca-id').value);
+    if (selecionado && selecionado.nome !== campoExercicioTreino.value.trim()) {
+      document.getElementById('tr-biblioteca-id').value = '';
+      document.getElementById('tr-imagem-url').value = '';
+      document.getElementById('tr-video').value = '';
+      document.getElementById('tr-atribuicao').value = '';
+      previewBibliotecaTreino.innerHTML = '';
+    }
+  });
+
+  try {
+    const { data, error } = await listarBiblioteca();
+    if (error) {
+      resultadosBibliotecaTreino.innerHTML = `<p class="erro">Não foi possível carregar a biblioteca: ${escapar(error.message)}</p>`;
+    } else {
+      bibliotecaCache = data || [];
+      renderResultadosBibliotecaTreino();
+    }
+  } catch (erro) {
+    resultadosBibliotecaTreino.innerHTML = `<p class="erro">Não foi possível carregar a biblioteca: ${escapar(erro.message)}</p>`;
+  }
+
   document.getElementById('form-treino')
       .addEventListener('submit', async evento => {
         evento.preventDefault();
@@ -905,7 +1016,13 @@ async function renderDetalheAluno(aluno) {
             exercicio: document.getElementById('tr-exercicio').value.trim(),
             series: document.getElementById('tr-series').value.trim(),
             reps: document.getElementById('tr-reps').value.trim(),
+            descanso: document.getElementById('tr-descanso').value.trim(),
             carga: document.getElementById('tr-carga').value.trim(),
+            como_executar: document.getElementById('tr-como').value.trim(),
+            biblioteca_exercicio_id: document.getElementById('tr-biblioteca-id').value || null,
+            imagem_url: document.getElementById('tr-imagem-url').value || null,
+            video: document.getElementById('tr-video').value || null,
+            atribuicao: document.getElementById('tr-atribuicao').value || null,
           });
 
           if (error) {
@@ -914,6 +1031,8 @@ async function renderDetalheAluno(aluno) {
           }
 
           formulario.reset();
+          previewBibliotecaTreino.innerHTML = '';
+          resultadosBibliotecaTreino.innerHTML = '';
           await carregarTreinos(aluno.id);
         } catch (erro) {
           alert(erro.message || 'Erro ao adicionar exercício.');
@@ -1064,13 +1183,18 @@ async function carregarTreinos(alunoId) {
 
     el.innerHTML = data.map(treino => `
       <div class="card-aluno admin-item-registro">
+        ${urlHttp(treino.imagem_url) ? `
+          <img class="treino-miniatura" src="${escapar(urlHttp(treino.imagem_url))}" alt="" loading="lazy" />
+        ` : ''}
         <div class="info-aluno">
           <strong>${escapar(treino.exercicio)}</strong>
           <span>
             ${escapar(treino.series || '-')} séries ×
             ${escapar(treino.reps || '-')} repetições
+            ${treino.descanso ? ` · Descanso: ${escapar(treino.descanso)}` : ''}
             ${treino.carga ? ` · ${escapar(treino.carga)}` : ''}
           </span>
+          ${treino.como_executar ? `<span>${escapar(treino.como_executar)}</span>` : ''}
         </div>
         ${botaoRemover(treino.id, 'Remover exercício')}
       </div>
@@ -1380,6 +1504,11 @@ async function renderBiblioteca() {
         </div>
       </div>
 
+      <div class="campo-busca">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" id="busca-biblioteca" placeholder="Buscar por exercício, grupo ou equipamento..." autocomplete="off" />
+      </div>
+
       <div id="lista-biblioteca" class="lista-cards">
         <p>Carregando biblioteca...</p>
       </div>
@@ -1401,14 +1530,26 @@ async function renderBiblioteca() {
         <label for="bi-grupo">Grupo muscular</label>
         <input type="text" id="bi-grupo" placeholder="Peito, pernas, costas..." />
 
+        <label for="bi-equipamento">Equipamento</label>
+        <input type="text" id="bi-equipamento" placeholder="Halteres, barra, peso corporal..." />
+
         <label for="bi-como">Como executar</label>
         <textarea id="bi-como" placeholder="Descreva a execução correta..."></textarea>
 
         <label for="bi-video">Link do vídeo</label>
         <input type="url" id="bi-video" placeholder="https://..." />
 
-        <label for="bi-imagem">Foto do exercício</label>
-        <input type="file" id="bi-imagem" accept="image/*" />
+        <label for="bi-imagem-url">Link da imagem (opcional)</label>
+        <input type="url" id="bi-imagem-url" placeholder="https://..." />
+
+        <label for="bi-imagem">Foto ou GIF do exercício</label>
+        <input type="file" id="bi-imagem" accept="image/*,.gif" />
+
+        <label for="bi-fonte">Fonte / licença do material</label>
+        <input type="url" id="bi-fonte" placeholder="https://..." />
+
+        <label for="bi-atribuicao">Atribuição exigida</label>
+        <input type="text" id="bi-atribuicao" placeholder="Ex.: © titular dos direitos" />
 
         <button type="submit" class="admin-btn-principal">
           <i class="fa-solid fa-plus"></i>
@@ -1436,8 +1577,12 @@ async function renderBiblioteca() {
           const { error } = await criarExercicioBiblioteca({
             nome: document.getElementById('bi-nome').value.trim(),
             grupo: document.getElementById('bi-grupo').value.trim(),
+            equipamento: document.getElementById('bi-equipamento').value.trim(),
             comoExecutar: document.getElementById('bi-como').value.trim(),
             video: document.getElementById('bi-video').value.trim(),
+            imagemUrl: document.getElementById('bi-imagem-url').value.trim(),
+            fonte: document.getElementById('bi-fonte').value.trim(),
+            atribuicao: document.getElementById('bi-atribuicao').value.trim(),
             imagemArquivo: document.getElementById('bi-imagem').files[0] || null,
           });
 
@@ -1456,7 +1601,78 @@ async function renderBiblioteca() {
         }
       });
 
+  document.getElementById('busca-biblioteca')
+      .addEventListener('input', evento => renderListaBiblioteca(evento.currentTarget.value));
+
   await carregarBiblioteca();
+}
+
+function renderListaBiblioteca(termo = '') {
+  const el = document.getElementById('lista-biblioteca');
+  if (!el) return;
+
+  const busca = termo.trim().toLocaleLowerCase('pt-BR');
+  const exercicios = bibliotecaCache.filter(exercicio =>
+    [exercicio.nome, exercicio.grupo, exercicio.equipamento]
+        .some(valor => String(valor || '').toLocaleLowerCase('pt-BR').includes(busca))
+  );
+
+  if (!exercicios.length) {
+    el.innerHTML = mensagemVazia('fa-book-open', busca ? 'Nenhum exercício corresponde à pesquisa.' : 'Nenhum exercício cadastrado.');
+    return;
+  }
+
+  el.innerHTML = exercicios.map(exercicio => `
+    <article class="card-envio admin-card-biblioteca">
+      ${urlHttp(exercicio.imagem_url) ? `
+        <img
+          src="${escapar(urlHttp(exercicio.imagem_url))}"
+          class="midia-envio"
+          alt="${escapar(exercicio.nome)}"
+          loading="lazy"
+        />
+      ` : ''}
+
+      <div class="admin-biblioteca-conteudo">
+        <div class="admin-biblioteca-titulo">
+          <strong>${escapar(exercicio.nome)}</strong>
+          ${exercicio.grupo ? `<span class="tag">${escapar(exercicio.grupo)}</span>` : ''}
+          ${exercicio.equipamento ? `<span class="tag">${escapar(exercicio.equipamento)}</span>` : ''}
+        </div>
+
+        ${exercicio.como_executar ? `<p class="legenda-envio">${escapar(exercicio.como_executar)}</p>` : ''}
+
+        <div class="admin-biblioteca-links">
+          ${urlHttp(exercicio.video) ? `
+            <a href="${escapar(urlHttp(exercicio.video))}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-solid fa-video"></i> Assistir vídeo
+            </a>
+          ` : ''}
+          ${urlHttp(exercicio.fonte) ? `
+            <a href="${escapar(urlHttp(exercicio.fonte))}" target="_blank" rel="noopener noreferrer" class="admin-link">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Fonte / licença
+            </a>
+          ` : ''}
+        </div>
+      </div>
+
+      ${botaoRemover(exercicio.id, 'Remover exercício da biblioteca')}
+    </article>
+  `).join('');
+
+  el.querySelectorAll('.btn-remover').forEach(botao => {
+    botao.addEventListener('click', async () => {
+      if (!confirm('Remover este exercício da biblioteca?')) return;
+
+      const { error: erroRemocao } = await removerExercicioBiblioteca(botao.dataset.id);
+      if (erroRemocao) {
+        alert(erroRemocao.message);
+        return;
+      }
+
+      await carregarBiblioteca();
+    });
+  });
 }
 
 async function carregarBiblioteca() {
@@ -1472,58 +1688,8 @@ async function carregarBiblioteca() {
       return;
     }
 
-    if (!data?.length) {
-      el.innerHTML = mensagemVazia('fa-book-open', 'Nenhum exercício cadastrado.');
-      return;
-    }
-
-    el.innerHTML = data.map(exercicio => `
-      <article class="card-envio admin-card-biblioteca">
-        ${exercicio.imagem_url ? `
-          <img
-            src="${escapar(exercicio.imagem_url)}"
-            class="midia-envio"
-            alt="${escapar(exercicio.nome)}"
-            loading="lazy"
-          />
-        ` : ''}
-
-        <div class="admin-biblioteca-conteudo">
-          <div>
-            <strong>${escapar(exercicio.nome)}</strong>
-            ${exercicio.grupo ? `<span class="tag">${escapar(exercicio.grupo)}</span>` : ''}
-          </div>
-
-          ${exercicio.como_executar ? `
-            <p class="legenda-envio">${escapar(exercicio.como_executar)}</p>
-          ` : ''}
-
-          ${exercicio.video ? `
-            <a href="${escapar(exercicio.video)}" target="_blank" rel="noopener noreferrer" class="admin-link">
-              <i class="fa-solid fa-video"></i>
-              Assistir vídeo
-            </a>
-          ` : ''}
-        </div>
-
-        ${botaoRemover(exercicio.id, 'Remover exercício da biblioteca')}
-      </article>
-    `).join('');
-
-    el.querySelectorAll('.btn-remover').forEach(botao => {
-      botao.addEventListener('click', async () => {
-        if (!confirm('Remover este exercício da biblioteca?')) return;
-
-        const { error: erroRemocao } = await removerExercicioBiblioteca(botao.dataset.id);
-
-        if (erroRemocao) {
-          alert(erroRemocao.message);
-          return;
-        }
-
-        await carregarBiblioteca();
-      });
-    });
+    bibliotecaCache = data || [];
+    renderListaBiblioteca(document.getElementById('busca-biblioteca')?.value || '');
   } catch (erro) {
     mostrarErro(el, erro);
   }

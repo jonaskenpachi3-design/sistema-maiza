@@ -223,8 +223,18 @@ export async function listarBiblioteca() {
   return { data: data || [], error };
 }
 
-export async function criarExercicioBiblioteca({ nome, grupo, comoExecutar, video, imagemArquivo }) {
-  let imagemUrl = null;
+export async function criarExercicioBiblioteca({
+  nome,
+  grupo,
+  equipamento,
+  comoExecutar,
+  video,
+  imagemUrl,
+  fonte,
+  atribuicao,
+  imagemArquivo,
+}) {
+  let urlImagem = imagemUrl || null;
 
   if (imagemArquivo) {
     const nomeArquivo = `${Date.now()}-${imagemArquivo.name}`;
@@ -234,15 +244,18 @@ export async function criarExercicioBiblioteca({ nome, grupo, comoExecutar, vide
     if (erroUpload) return { error: erroUpload };
 
     const { data: urlData } = supabase.storage.from('biblioteca').getPublicUrl(nomeArquivo);
-    imagemUrl = urlData.publicUrl;
+    urlImagem = urlData.publicUrl;
   }
 
   return supabase.from('biblioteca_exercicios').insert({
     nome,
     grupo,
+    equipamento,
     como_executar: comoExecutar,
     video,
-    imagem_url: imagemUrl,
+    imagem_url: urlImagem,
+    fonte,
+    atribuicao,
   }).select().single();
 }
 
