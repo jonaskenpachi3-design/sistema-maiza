@@ -390,7 +390,8 @@ function desenharListaAlunos(alunos) {
     listaEl.innerHTML = `
       <div class="vazio-rico">
         <i class="fa-solid fa-user-group"></i>
-        Nenhum aluno encontrado.
+        Nenhum aluno visível. Confirme se seu perfil está como administradora
+        e se a migração de acesso à lista de alunos foi executada no Supabase.
       </div>
     `;
     return;
